@@ -1,0 +1,1259 @@
+"use client";
+
+import { useState, useEffect, useMemo, FormEvent } from "react";
+import Image from "next/image";
+import { 
+  Wallet, 
+  Plus, 
+  Trash2, 
+  PlusCircle, 
+  AlertTriangle, 
+  Check, 
+  X, 
+  Calendar, 
+  TrendingUp, 
+  TrendingDown, 
+  AlertCircle
+} from "lucide-react";
+
+type TransactionType = "income" | "expense";
+
+interface Transaction {
+  id: string;
+  name: string;
+  type: TransactionType;
+  category: string;
+  amount: number;
+  date: string;
+}
+
+interface Category {
+  name: string;
+  color: string; // Hex code, e.g. #ef4444
+  monthlyLimit: number | null;
+}
+
+interface RecurringRule {
+  id: string;
+  name: string;
+  type: TransactionType;
+  category: string;
+  amount: number;
+  dayOfMonth: number;
+}
+
+interface MoneyModuleProps {
+  autoApproveTransactions: boolean;
+}
+
+const defaultCategories: Category[] = [
+  { name: "Salary", color: "#10b981", monthlyLimit: null }, // Emerald
+  { name: "Freelance", color: "#3b82f6", monthlyLimit: null }, // Blue
+  { name: "Food", color: "#f59e0b", monthlyLimit: 500 }, // Amber
+  { name: "Rent & Utilities", color: "#ef4444", monthlyLimit: 1200 }, // Red
+  { name: "Subscriptions", color: "#a855f7", monthlyLimit: 80 }, // Purple
+  { name: "Other", color: "#64748b", monthlyLimit: null }, // Slate
+];
+
+const defaultTransactions: Transaction[] = [
+  {
+    id: "tx-1",
+    name: "Monthly Salary Deposit",
+    type: "income",
+    category: "Salary",
+    amount: 3200,
+    date: "2026-06-01",
+  },
+  {
+    id: "tx-2",
+    name: "Apartment Rental Payment",
+    type: "expense",
+    category: "Rent & Utilities",
+    amount: 1000,
+    date: "2026-06-01",
+  },
+  {
+    id: "tx-3",
+    name: "Organic Groceries",
+    type: "expense",
+    category: "Food",
+    amount: 280,
+    date: "2026-06-04",
+  },
+  {
+    id: "tx-4",
+    name: "Freelance UI Design",
+    type: "income",
+    category: "Freelance",
+    amount: 850,
+    date: "2026-06-05",
+  },
+  {
+    id: "tx-5",
+    name: "Fast Food Takeout",
+    type: "expense",
+    category: "Food",
+    amount: 130,
+    date: "2026-06-07",
+  },
+];
+
+const defaultRecurringRules: RecurringRule[] = [
+  {
+    id: "rec-1",
+    name: "Netflix Subscription",
+    type: "expense",
+    category: "Subscriptions",
+    amount: 15,
+    dayOfMonth: 8,
+  },
+  {
+    id: "rec-2",
+    name: "Gym Membership",
+    type: "expense",
+    category: "Other",
+    amount: 45,
+    dayOfMonth: 8,
+  },
+  {
+    id: "rec-3",
+    name: "AWS Cloud Overheads",
+    type: "expense",
+    category: "Freelance",
+    amount: 120,
+    dayOfMonth: 12,
+  },
+];
+
+const colorPalette = [
+  { name: "Red", hex: "#ef4444" },
+  { name: "Blue", hex: "#3b82f6" },
+  { name: "Emerald", hex: "#10b981" },
+  { name: "Purple", hex: "#a855f7" },
+  { name: "Amber", hex: "#f59e0b" },
+  { name: "Slate", hex: "#64748b" },
+];
+
+export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
+  // --- STATE ---
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [initialBalance, setInitialBalance] = useState<number>(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>(defaultCategories);
+  const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(defaultRecurringRules);
+  const [processedRecurring, setProcessedRecurring] = useState<string[]>([]);
+  const [currency, setCurrency] = useState<"USD" | "INR">("USD");
+
+  // Onboarding Form State
+  const [onboardingInput, setOnboardingInput] = useState<string>("");
+
+  // Transaction Form State
+  const [txType, setTxType] = useState<TransactionType>("expense");
+  const [txName, setTxName] = useState<string>("");
+  const [txAmount, setTxAmount] = useState<string>("");
+  const [txCategory, setTxCategory] = useState<string>("");
+
+  // Category Popover State
+  const [showCategoryCreator, setShowCategoryCreator] = useState<boolean>(false);
+  const [newCatName, setNewCatName] = useState<string>("");
+  const [newCatColor, setNewCatColor] = useState<string>("#ef4444");
+  const [newCatLimit, setNewCatLimit] = useState<string>("");
+
+  // Recurring UI States
+  const [showRecurringManager, setShowRecurringManager] = useState<boolean>(false);
+  const [newRecName, setNewRecName] = useState<string>("");
+  const [newRecType, setNewRecType] = useState<TransactionType>("expense");
+  const [newRecCategory, setNewRecCategory] = useState<string>("");
+  const [newRecAmount, setNewRecAmount] = useState<string>("");
+  const [newRecDay, setNewRecDay] = useState<string>("1");
+
+  // Notifications
+  const [notification, setNotification] = useState<string>("");
+
+  // --- HELPER FUNCTIONS ---
+  const showTempNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => {
+      setNotification((curr) => (curr === msg ? "" : curr));
+    }, 4000);
+  };
+
+  const saveState = (
+    updatedInitialized: boolean,
+    updatedInitialBalance: number,
+    updatedTx: Transaction[],
+    updatedCat: Category[],
+    updatedRec: RecurringRule[],
+    updatedProcessed: string[]
+  ) => {
+    localStorage.setItem("nect_money_initialized", String(updatedInitialized));
+    localStorage.setItem("nect_money_initial_balance", String(updatedInitialBalance));
+    localStorage.setItem("nect_money_transactions", JSON.stringify(updatedTx));
+    localStorage.setItem("nect_money_categories", JSON.stringify(updatedCat));
+    localStorage.setItem("nect_money_recurring_rules", JSON.stringify(updatedRec));
+    localStorage.setItem("nect_money_processed_recurring", JSON.stringify(updatedProcessed));
+  };
+
+  // --- LOCAL STORAGE SYNC ---
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const storedInitialized = localStorage.getItem("nect_money_initialized");
+      if (storedInitialized === "true") {
+        setIsInitialized(true);
+        
+        const balanceVal = Number(localStorage.getItem("nect_money_initial_balance") || "0");
+        setInitialBalance(balanceVal);
+        
+        let loadedTx: Transaction[] = [];
+        const storedTx = localStorage.getItem("nect_money_transactions");
+        if (storedTx) loadedTx = JSON.parse(storedTx);
+        else loadedTx = defaultTransactions;
+
+        let loadedCat = defaultCategories;
+        const storedCat = localStorage.getItem("nect_money_categories");
+        if (storedCat) loadedCat = JSON.parse(storedCat);
+        setCategories(loadedCat);
+        
+        let loadedRec = defaultRecurringRules;
+        const storedRec = localStorage.getItem("nect_money_recurring_rules");
+        if (storedRec) loadedRec = JSON.parse(storedRec);
+        setRecurringRules(loadedRec);
+
+        let loadedProcessed: string[] = [];
+        const storedProcessed = localStorage.getItem("nect_money_processed_recurring");
+        if (storedProcessed) loadedProcessed = JSON.parse(storedProcessed);
+
+        const storedCurrency = localStorage.getItem("nect_money_currency");
+        if (storedCurrency === "USD" || storedCurrency === "INR") {
+          setCurrency(storedCurrency);
+        }
+
+        // Auto-approve check on mount
+        if (autoApproveTransactions) {
+          const today = new Date();
+          const currentDay = today.getDate();
+          const year = today.getFullYear();
+          const month = String(today.getMonth() + 1).padStart(2, "0");
+          const monthKey = `${year}-${month}`;
+
+          const pending = loadedRec.filter((rule) => {
+            const isDue = currentDay >= rule.dayOfMonth;
+            const processKey = `${rule.id}-${monthKey}`;
+            const isProcessed = loadedProcessed.includes(processKey);
+            return isDue && !isProcessed;
+          });
+
+          if (pending.length > 0) {
+            const newTxList = [...loadedTx];
+            const newProcessed = [...loadedProcessed];
+            
+            pending.forEach((rule) => {
+              const processKey = `${rule.id}-${monthKey}`;
+              const dateString = `${monthKey}-${String(rule.dayOfMonth).padStart(2, "0")}`;
+              const newTx: Transaction = {
+                id: `tx-auto-${rule.id}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                name: `[Auto] ${rule.name}`,
+                type: rule.type,
+                category: rule.category,
+                amount: rule.amount,
+                date: dateString,
+              };
+              newTxList.unshift(newTx);
+              newProcessed.push(processKey);
+            });
+
+            loadedTx = newTxList;
+            loadedProcessed = newProcessed;
+            
+            localStorage.setItem("nect_money_transactions", JSON.stringify(newTxList));
+            localStorage.setItem("nect_money_processed_recurring", JSON.stringify(newProcessed));
+            
+            setNotification(`Auto-processed ${pending.length} recurring transaction(s).`);
+          }
+        }
+
+        setTransactions(loadedTx);
+        setProcessedRecurring(loadedProcessed);
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [autoApproveTransactions]);
+
+  // --- DYNAMIC CALCULATIONS ---
+  const currencySymbol = currency === "USD" ? "$" : "₹";
+
+  const totalEarnings = useMemo(() => {
+    return transactions
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [transactions]);
+
+  const totalExpenses = useMemo(() => {
+    return transactions
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [transactions]);
+
+  const netLiquidity = useMemo(() => {
+    return initialBalance + totalEarnings - totalExpenses;
+  }, [initialBalance, totalEarnings, totalExpenses]);
+
+  // Current year-month key for logging recurring transactions, e.g. "2026-06"
+  const currentMonthKey = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`;
+  }, []);
+
+  const monthlyNetYield = useMemo(() => {
+    const currentMonthTx = transactions.filter((t) => t.date.startsWith(currentMonthKey));
+    const earnings = currentMonthTx
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expenses = currentMonthTx
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+    return earnings - expenses;
+  }, [transactions, currentMonthKey]);
+
+  // Calculate accumulated spending by category for warning alerts
+  const categoryExpenses = useMemo(() => {
+    const currentMonthExpenses = transactions.filter(
+      (t) => t.type === "expense" && t.date.startsWith(currentMonthKey)
+    );
+    const totals: Record<string, number> = {};
+    currentMonthExpenses.forEach((t) => {
+      totals[t.category] = (totals[t.category] || 0) + t.amount;
+    });
+    return totals;
+  }, [transactions, currentMonthKey]);
+
+  // Check if a category has exceeded 80% or more of its spending cap
+  const checkCategoryThreshold = (categoryName: string) => {
+    const cat = categories.find((c) => c.name === categoryName);
+    if (!cat || cat.monthlyLimit === null) return { exceeded: false, percent: 0 };
+    const spent = categoryExpenses[categoryName] || 0;
+    const limit = cat.monthlyLimit;
+    const percent = limit > 0 ? (spent / limit) * 100 : 0;
+    return { exceeded: percent >= 80, percent };
+  };
+
+  // --- RECURRING GATEKEEPER INTERCEPTOR LOGIC ---
+  const currentDayOfMonth = useMemo(() => {
+    return new Date().getDate();
+  }, []);
+
+  // Find recurring rules that are currently due (dayOfMonth <= currentDayOfMonth)
+  // and have NOT been processed (approved or skipped) in the current month
+  const pendingRecurringTransactions = useMemo(() => {
+    return recurringRules.filter((rule) => {
+      const isDue = currentDayOfMonth >= rule.dayOfMonth;
+      const processKey = `${rule.id}-${currentMonthKey}`;
+      const isProcessed = processedRecurring.includes(processKey);
+      return isDue && !isProcessed;
+    });
+  }, [recurringRules, currentDayOfMonth, processedRecurring, currentMonthKey]);
+
+  // Fallback defaults for form selectors
+  const activeTxCategory = txCategory || (categories[0]?.name || "");
+  const activeRecCategory = newRecCategory || (categories[0]?.name || "");
+
+  const handleInitialize = (e: FormEvent) => {
+    e.preventDefault();
+    const balance = parseFloat(onboardingInput);
+    if (isNaN(balance) || balance < 0) {
+      alert("Please enter a valid initial balance.");
+      return;
+    }
+    
+    setIsInitialized(true);
+    setInitialBalance(balance);
+    setTransactions(defaultTransactions);
+    
+    saveState(true, balance, defaultTransactions, categories, recurringRules, processedRecurring);
+    showTempNotification("Finance ledger successfully initialized!");
+  };
+
+  const handleAddTransaction = (e: FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(txAmount);
+    if (!txName.trim()) {
+      alert("Please enter a transaction name.");
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+
+    const today = new Date();
+    const dateStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const newTx: Transaction = {
+      id: `tx-${Date.now()}`,
+      name: txName.trim(),
+      type: txType,
+      category: activeTxCategory,
+      amount: amount,
+      date: dateStr,
+    };
+
+    const updatedTxs = [newTx, ...transactions];
+    setTransactions(updatedTxs);
+    setTxName("");
+    setTxAmount("");
+    
+    saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, processedRecurring);
+    showTempNotification(`Logged: ${txType === "income" ? "+" : "-"}${currencySymbol}${amount} for ${newTx.name}`);
+  };
+
+  const handleDeleteTransaction = (id: string) => {
+    const target = transactions.find((t) => t.id === id);
+    const updatedTxs = transactions.filter((t) => t.id !== id);
+    setTransactions(updatedTxs);
+    
+    saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, processedRecurring);
+    if (target) {
+      showTempNotification(`Deleted: ${target.name}`);
+    }
+  };
+
+  const handleCreateCategory = (e: FormEvent) => {
+    e.preventDefault();
+    const name = newCatName.trim();
+    if (!name) return;
+    
+    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      alert("A category with this name already exists.");
+      return;
+    }
+
+    const limit = newCatLimit.trim() ? parseFloat(newCatLimit) : null;
+
+    const newCategory: Category = {
+      name,
+      color: newCatColor,
+      monthlyLimit: limit && !isNaN(limit) ? limit : null,
+    };
+
+    const updatedCats = [...categories, newCategory];
+    setCategories(updatedCats);
+    setNewCatName("");
+    setNewCatLimit("");
+    setShowCategoryCreator(false);
+    
+    setTxCategory(name);
+    setNewRecCategory(name);
+
+    saveState(isInitialized, initialBalance, transactions, updatedCats, recurringRules, processedRecurring);
+    showTempNotification(`Category "${name}" created.`);
+  };
+
+  // Interceptor Actions
+  const handleApproveRecurring = (rule: RecurringRule) => {
+    const processKey = `${rule.id}-${currentMonthKey}`;
+    const dateStr = `${currentMonthKey}-${String(rule.dayOfMonth).padStart(2, "0")}`;
+
+    const newTx: Transaction = {
+      id: `tx-rec-${rule.id}-${Date.now()}`,
+      name: rule.name,
+      type: rule.type,
+      category: rule.category,
+      amount: rule.amount,
+      date: dateStr,
+    };
+
+    const updatedTxs = [newTx, ...transactions];
+    const updatedProcessed = [...processedRecurring, processKey];
+
+    setTransactions(updatedTxs);
+    setProcessedRecurring(updatedProcessed);
+
+    saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, updatedProcessed);
+    showTempNotification(`Approved recurring payment: ${rule.name}`);
+  };
+
+  const handleCancelRecurring = (rule: RecurringRule) => {
+    const processKey = `${rule.id}-${currentMonthKey}`;
+    const updatedProcessed = [...processedRecurring, processKey];
+
+    setProcessedRecurring(updatedProcessed);
+
+    saveState(isInitialized, initialBalance, transactions, categories, recurringRules, updatedProcessed);
+    showTempNotification(`Skipped recurring payment: ${rule.name} for this month`);
+  };
+
+  // Recurring Rules Settings
+  const handleAddRecurringRule = (e: FormEvent) => {
+    e.preventDefault();
+    const name = newRecName.trim();
+    const amount = parseFloat(newRecAmount);
+    const day = parseInt(newRecDay);
+
+    if (!name) {
+      alert("Please enter a name.");
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid amount.");
+      return;
+    }
+    if (isNaN(day) || day < 1 || day > 31) {
+      alert("Please enter a valid day of the month (1-31).");
+      return;
+    }
+
+    const newRule: RecurringRule = {
+      id: `rec-rule-${Date.now()}`,
+      name,
+      type: newRecType,
+      category: activeRecCategory,
+      amount,
+      dayOfMonth: day,
+    };
+
+    const updatedRules = [...recurringRules, newRule];
+    setRecurringRules(updatedRules);
+    setNewRecName("");
+    setNewRecAmount("");
+    setNewRecDay("1");
+
+    saveState(isInitialized, initialBalance, transactions, categories, updatedRules, processedRecurring);
+    showTempNotification(`Recurring rule "${name}" scheduled for day ${day}.`);
+  };
+
+  const handleDeleteRecurringRule = (id: string) => {
+    const rule = recurringRules.find((r) => r.id === id);
+    const updatedRules = recurringRules.filter((r) => r.id !== id);
+    setRecurringRules(updatedRules);
+
+    saveState(isInitialized, initialBalance, transactions, categories, updatedRules, processedRecurring);
+    if (rule) {
+      showTempNotification(`Removed recurring rule: ${rule.name}`);
+    }
+  };
+
+  const handleCurrencyChange = (newCurrency: "USD" | "INR") => {
+    setCurrency(newCurrency);
+    localStorage.setItem("nect_money_currency", newCurrency);
+  };
+
+  const handleResetStorage = () => {
+    if (confirm("Are you sure you want to reset all Money Module data? This will re-trigger the onboarding setup.")) {
+      localStorage.removeItem("nect_money_initialized");
+      localStorage.removeItem("nect_money_initial_balance");
+      localStorage.removeItem("nect_money_transactions");
+      localStorage.removeItem("nect_money_categories");
+      localStorage.removeItem("nect_money_recurring_rules");
+      localStorage.removeItem("nect_money_processed_recurring");
+      
+      setIsInitialized(false);
+      setInitialBalance(0);
+      setTransactions([]);
+      setCategories(defaultCategories);
+      setRecurringRules(defaultRecurringRules);
+      setProcessedRecurring([]);
+    }
+  };
+
+  // --- PHASE 1: ONBOARDING SCREEN ---
+  if (!isInitialized) {
+    return (
+      <section className="flex flex-col items-center justify-center py-12 px-4 animate-fade-in-up">
+        <div className="relative max-w-md w-full rounded-2xl border border-slate-800/80 bg-slate-900/40 p-8 text-center backdrop-blur-sm shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.2)]">
+            <Wallet className="h-8 w-8 text-[var(--rank-accent)]" />
+          </div>
+
+          <h2 className="mt-6 text-2xl font-black text-white uppercase tracking-wider">
+            Money Ledger Setup
+          </h2>
+          <p className="mt-3 text-slate-405 text-sm leading-relaxed">
+            Welcome to the premium ledger workspace. Initialize your current total capital to begin logging income, tracking monthly budgets, and establishing recurring rosters.
+          </p>
+
+          <form onSubmit={handleInitialize} className="mt-8 space-y-6">
+            <div className="flex flex-col gap-2 text-left">
+              <label htmlFor="initialBalance" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Enter Current Total Capital / Balance ({currencySymbol})
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  id="initialBalance"
+                  type="number"
+                  step="any"
+                  placeholder="e.g. 5000"
+                  required
+                  value={onboardingInput}
+                  onChange={(e) => setOnboardingInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-4 px-5 text-lg font-black text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-605 focus:border-[var(--rank-accent)] focus:ring-2 focus:ring-[var(--rank-accent)]/20"
+                />
+                <div className="absolute right-4 text-xs font-bold text-slate-505 flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => handleCurrencyChange("USD")}
+                    className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "USD" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
+                  >
+                    USD ($)
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleCurrencyChange("INR")}
+                    className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "INR" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
+                  >
+                    INR (₹)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full rounded-xl py-4 font-black uppercase tracking-[0.15em] text-slate-950 bg-[var(--rank-accent)] hover:bg-[var(--rank-accent)]/90 active:scale-95 transition-all duration-100 shadow-[0_0_24px_rgba(34,211,238,0.25)] cursor-pointer"
+            >
+              Initialize Account
+            </button>
+          </form>
+        </div>
+      </section>
+    );
+  }
+
+  // --- PHASE 2: ACTIVE WORKSPACE ---
+  return (
+    <section className="space-y-6 animate-fade-in-up">
+      {/* Top Banner Row */}
+      <div className="relative grid gap-5 lg:grid-cols-[1fr_360px] items-center">
+        
+        {/* Top-Left: Module Title & Center Net Liquidity Block */}
+        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm w-full">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
+              <Image
+                src="/assets/icons/money.png"
+                alt="Money module icon"
+                width={44}
+                height={44}
+                className="h-11 w-11 object-contain"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
+                Ledger Workspace
+              </p>
+              <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl tracking-wider">
+                MONEY
+              </h1>
+            </div>
+          </div>
+
+          {/* Top-Center: Net Liquidity Tag */}
+          <div className="flex-1 flex justify-center md:max-w-md">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-6 py-4 text-center min-w-[280px] shadow-[inset_0_0_12px_rgba(255,255,255,0.03)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Net Liquidity Pool
+              </p>
+              <p className="mt-1.5 text-2xl font-black text-white truncate">
+                Total Money Left: <span className="text-[var(--rank-accent)]">{currencySymbol}{netLiquidity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Currency Toggle */}
+          <div className="flex items-center gap-2 self-end md:self-center">
+            {notification && (
+              <span className="mr-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 animate-pulse">
+                {notification}
+              </span>
+            )}
+            <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950/75 p-0.5 text-xs font-bold text-slate-400">
+              <button
+                type="button"
+                onClick={() => handleCurrencyChange("USD")}
+                className={`rounded-lg px-2.5 py-1.5 transition-all cursor-pointer ${currency === "USD" ? "bg-slate-800 text-white font-black" : "hover:text-slate-200"}`}
+              >
+                USD ($)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCurrencyChange("INR")}
+                className={`rounded-lg px-2.5 py-1.5 transition-all cursor-pointer ${currency === "INR" ? "bg-slate-800 text-white font-black" : "hover:text-slate-200"}`}
+              >
+                INR (₹)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Top-Right: Monthly Net Yield Pill */}
+        <div className={`rounded-2xl border p-6 text-center backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex flex-col justify-center min-h-[106px] transition-all duration-350 ${
+          monthlyNetYield >= 0 
+            ? "border-emerald-500/20 bg-emerald-500/5" 
+            : "border-rose-500/20 bg-rose-500/5"
+        }`}>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+            Monthly Net Yield
+          </p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            {monthlyNetYield >= 0 ? (
+              <TrendingUp className="h-5 w-5 text-emerald-400" />
+            ) : (
+              <TrendingDown className="h-5 w-5 text-rose-400" />
+            )}
+            <span className={`rounded-full px-4 py-1.5 text-lg font-black tracking-wide ${
+              monthlyNetYield >= 0 
+                ? "text-emerald-400 bg-emerald-500/10" 
+                : "text-rose-400 bg-rose-500/10"
+            }`}>
+              {monthlyNetYield >= 0 ? "+" : ""}{currencySymbol}{monthlyNetYield.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Interceptor Prompt - High Visibility Banner */}
+      {pendingRecurringTransactions.length > 0 && !autoApproveTransactions && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-[0_0_24px_rgba(245,158,11,0.08)] animate-pulse">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-950/40 text-amber-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-amber-200">
+                  Gatekeeper Interceptor: Upcoming Recurring Transaction
+                </h3>
+                <div className="text-sm text-slate-300">
+                  <span className="font-black text-white">{pendingRecurringTransactions[0].name}</span> due on day {pendingRecurringTransactions[0].dayOfMonth} (
+                  <span className="font-semibold text-slate-100">{pendingRecurringTransactions[0].type === "income" ? "+" : "-"}{currencySymbol}{pendingRecurringTransactions[0].amount}</span>
+                  ) requires authentication.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => handleApproveRecurring(pendingRecurringTransactions[0])}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-500 active:scale-95 transition-all duration-100 cursor-pointer"
+              >
+                <Check className="h-4 w-4" /> Continue / Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCancelRecurring(pendingRecurringTransactions[0])}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-300 hover:text-white hover:bg-slate-800 active:scale-95 transition-all duration-100 cursor-pointer"
+              >
+                <X className="h-4 w-4" /> Cancel For This Month
+              </button>
+            </div>
+          </div>
+          {pendingRecurringTransactions.length > 1 && (
+            <p className="mt-2 text-right text-[10px] font-bold text-amber-400/80">
+              +{pendingRecurringTransactions.length - 1} more pending recurring authorization(s)...
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Main Grid: Form Engine + Roster Manager */}
+      <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
+        
+        {/* Core Transaction Engine Panel */}
+        <div className="rounded-2xl border border-slate-800/85 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-between relative">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
+                  <PlusCircle className="h-5 w-5 text-[var(--rank-accent)]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-lg tracking-wide">➕ LOG TRANSACTION</h3>
+                  <p className="text-xs text-slate-400">Instantly record earnings or expenditures</p>
+                </div>
+              </div>
+
+              {/* Transaction Type Toggle Button row */}
+              <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950/60 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setTxType("income")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+                    txType === "income" 
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
+                      : "text-slate-450 hover:text-slate-200"
+                  }`}
+                >
+                  [ + Income ]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTxType("expense")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+                    txType === "expense" 
+                      ? "bg-rose-500/15 text-rose-400 border border-rose-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+                      : "text-slate-450 hover:text-slate-200"
+                  }`}
+                >
+                  [ - Expense ]
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleAddTransaction} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="txName" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Transaction Name
+                  </label>
+                  <input
+                    id="txName"
+                    type="text"
+                    placeholder="e.g. Office Supplies, Coffee"
+                    required
+                    value={txName}
+                    onChange={(e) => setTxName(e.target.value)}
+                    className="rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-slate-500 focus:ring-2 focus:ring-slate-800"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="txAmount" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Amount ({currencySymbol})
+                  </label>
+                  <input
+                    id="txAmount"
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    placeholder="e.g. 15.50"
+                    required
+                    value={txAmount}
+                    onChange={(e) => setTxAmount(e.target.value)}
+                    className={`rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 ${
+                      txType === "income"
+                        ? "focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25"
+                        : "focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25"
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="relative flex flex-col gap-1.5">
+                <label htmlFor="categorySelector" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Category Tag
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    id="categorySelector"
+                    value={activeTxCategory}
+                    onChange={(e) => setTxCategory(e.target.value)}
+                    className="flex-1 rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none focus:border-slate-500"
+                  >
+                    {categories.map((c) => {
+                      const limitStatus = checkCategoryThreshold(c.name);
+                      return (
+                        <option key={c.name} value={c.name}>
+                          {c.name} {limitStatus.exceeded ? "⚠️ (Budget Threshold Exceeded)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryCreator(!showCategoryCreator)}
+                    className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-xl border transition-all active:scale-95 duration-100 cursor-pointer ${
+                      showCategoryCreator
+                        ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
+                        : "border-slate-700 bg-slate-950/70 text-slate-400 hover:text-white"
+                    }`}
+                    title="Create custom category"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Inline Category Creator Tool Popover */}
+                {showCategoryCreator && (
+                  <div className="absolute top-[75px] right-0 z-10 w-full sm:w-[320px] rounded-2xl border border-slate-800 bg-slate-955 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)] animate-fade-in-up">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 border-b border-slate-900 pb-2 mb-3">
+                      Create Custom Category
+                    </h4>
+                    
+                    <div className="space-y-3">
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="newCatName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Category Name
+                        </label>
+                        <input
+                          id="newCatName"
+                          type="text"
+                          placeholder="e.g. Shopping, Health"
+                          value={newCatName}
+                          onChange={(e) => setNewCatName(e.target.value)}
+                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="newCatLimit" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Monthly Spending Cap (Limit)
+                        </label>
+                        <input
+                          id="newCatLimit"
+                          type="number"
+                          placeholder="Optional (e.g. 200)"
+                          value={newCatLimit}
+                          onChange={(e) => setNewCatLimit(e.target.value)}
+                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Color Tag Indicator
+                        </span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {colorPalette.map((color) => (
+                            <button
+                              key={color.hex}
+                              type="button"
+                              onClick={() => setNewCatColor(color.hex)}
+                              className={`w-6 h-6 rounded-full transition-transform active:scale-80 cursor-pointer border ${
+                                newCatColor === color.hex 
+                                  ? "scale-115 border-white ring-2 ring-[var(--rank-accent)]/50" 
+                                  : "border-transparent"
+                              }`}
+                              style={{ backgroundColor: color.hex }}
+                              title={color.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 justify-end pt-2 border-t border-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => setShowCategoryCreator(false)}
+                          className="rounded-lg border border-slate-800 px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCreateCategory}
+                          className="rounded-lg bg-[var(--rank-accent)] px-3 py-1.5 text-2xs font-black uppercase tracking-wider text-slate-950 active:scale-95 transition-transform duration-100 cursor-pointer"
+                        >
+                          Save Category
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="submit"
+                  className="rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 px-5 py-3.5 text-xs font-black uppercase tracking-widest text-slate-200 transition-all duration-100 hover:bg-slate-900 active:scale-95 cursor-pointer shadow-lg"
+                >
+                  Add Transaction
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Recurring Profiles Panel */}
+        <div className="rounded-2xl border border-slate-800/85 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
+                  <Calendar className="h-5 w-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="font-black text-white text-lg tracking-wide">🔄 RECURRING ROSTER</h3>
+                  <p className="text-xs text-slate-400">Scheduled monthly bills & deposits</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowRecurringManager(!showRecurringManager)}
+                className="rounded-xl border border-purple-500/20 bg-purple-500/10 px-3 py-2 text-2xs font-black uppercase tracking-wider text-purple-200 hover:bg-purple-500/20 active:scale-95 transition-all duration-100 cursor-pointer"
+              >
+                {showRecurringManager ? "View Active Roster" : "Manage Recurring Rules"}
+              </button>
+            </div>
+
+            {showRecurringManager ? (
+              /* Recurring Rules Builder & Manager */
+              <div className="space-y-4">
+                <form onSubmit={handleAddRecurringRule} className="border border-slate-800/80 bg-slate-955/35 p-4 rounded-xl space-y-3 animate-fade-in-up">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">
+                    Schedule New Recurring Rule
+                  </h4>
+                  
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="newRecName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Rule Name
+                      </label>
+                      <input
+                        id="newRecName"
+                        type="text"
+                        placeholder="e.g. Rent, Gym"
+                        required
+                        value={newRecName}
+                        onChange={(e) => setNewRecName(e.target.value)}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="newRecAmount" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Amount ({currencySymbol})
+                      </label>
+                      <input
+                        id="newRecAmount"
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 50"
+                        required
+                        value={newRecAmount}
+                        onChange={(e) => setNewRecAmount(e.target.value)}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Type
+                      </span>
+                      <select
+                        value={newRecType}
+                        onChange={(e) => setNewRecType(e.target.value as TransactionType)}
+                        className="rounded-lg border border-slate-800 bg-slate-955 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
+                      >
+                        <option value="expense">Expense (-)</option>
+                        <option value="income">Income (+)</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="newRecCategorySelect" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Category
+                      </label>
+                      <select
+                        id="newRecCategorySelect"
+                        value={activeRecCategory}
+                        onChange={(e) => setNewRecCategory(e.target.value)}
+                        className="rounded-lg border border-slate-800 bg-slate-955 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
+                      >
+                        {categories.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="newRecDay" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Billing Day (1-31)
+                      </label>
+                      <input
+                        id="newRecDay"
+                        type="number"
+                        min="1"
+                        max="31"
+                        required
+                        value={newRecDay}
+                        onChange={(e) => setNewRecDay(e.target.value)}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-2xs font-black uppercase tracking-wider text-white active:scale-95 transition-transform duration-105 cursor-pointer"
+                    >
+                      Schedule Rule
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              /* Active Recurring Rules Roster */
+              <div className="space-y-3">
+                {recurringRules.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-850 p-8 text-center text-slate-500 text-sm">
+                    No recurring transaction profiles scheduled.
+                  </div>
+                ) : (
+                  <div className="max-h-[200px] overflow-y-auto pr-1 space-y-2">
+                    {recurringRules.map((rule) => {
+                      const categoryData = categories.find((c) => c.name === rule.category);
+                      const catColor = categoryData?.color || "#64748b";
+
+                      return (
+                        <div
+                          key={rule.id}
+                          className="flex items-center justify-between p-3 rounded-xl border border-slate-800 bg-slate-950/20 hover:bg-slate-950/45 transition-all duration-150"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-200 text-sm truncate">{rule.name}</span>
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[9px] font-bold"
+                                style={{
+                                  backgroundColor: `${catColor}15`,
+                                  color: catColor,
+                                  border: `1px solid ${catColor}30`,
+                                }}
+                              >
+                                {rule.category}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-505 mt-0.5 font-mono">
+                              Due: Day {rule.dayOfMonth} of month
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-3 ml-3">
+                            <span className={`font-mono text-sm font-bold ${
+                              rule.type === "income" ? "text-emerald-400" : "text-slate-400"
+                            }`}>
+                              {rule.type === "income" ? "+" : "-"}{currencySymbol}{rule.amount}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRecurringRule(rule.id)}
+                              className="rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-950/60 p-2 text-slate-405 hover:text-rose-450 active:scale-95 transition-transform duration-100 cursor-pointer"
+                              title="Delete recurring rule"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* History Log Ledger */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-5 border-b border-slate-850 pb-4">
+          <div>
+            <h2 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
+              📋 RECENT TRANSACTION HISTORY LOG
+            </h2>
+            <p className="text-xs text-slate-400">
+              Complete active registry of transactions logged in the current monthly cycle
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleResetStorage}
+            className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-2xs font-bold uppercase tracking-wider text-rose-350 hover:bg-rose-500/15 active:scale-95 transition-all duration-105 cursor-pointer"
+          >
+            Reset Ledger
+          </button>
+        </div>
+
+        {transactions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/20 p-12 text-center text-slate-500 text-sm">
+            No transactions registered. Enter transactions above or approve recurring alerts to populate.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <th className="py-3 px-4">Date</th>
+                  <th className="py-3 px-4">Transaction Name</th>
+                  <th className="py-3 px-4">Category Badge (With Cap Alerts)</th>
+                  <th className="py-3 px-4">Amount</th>
+                  <th className="py-3 px-4 text-right w-20">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {transactions.map((tx) => {
+                  const categoryData = categories.find((c) => c.name === tx.category);
+                  const baseColor = categoryData?.color || "#64748b";
+                  
+                  const limitStatus = tx.type === "expense" ? checkCategoryThreshold(tx.category) : { exceeded: false, percent: 0 };
+                  
+                  const badgeStyle = limitStatus.exceeded
+                    ? {
+                        backgroundColor: "#f59e0b15",
+                        borderColor: "#f59e0b",
+                        color: "#fbbf24",
+                      }
+                    : {
+                        backgroundColor: `${baseColor}15`,
+                        borderColor: baseColor,
+                        color: baseColor,
+                      };
+
+                  return (
+                    <tr key={tx.id} className="hover:bg-slate-950/15 transition-colors duration-150">
+                      <td className="py-3.5 px-4 font-mono text-xs text-slate-405">
+                        {tx.date}
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-200">
+                        {tx.name}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
+                            limitStatus.exceeded ? "animate-pulse" : ""
+                          }`}
+                          style={badgeStyle}
+                        >
+                          {limitStatus.exceeded && <AlertCircle className="h-3 w-3 shrink-0" />}
+                          {limitStatus.exceeded ? `⚠️ ${tx.category} (>80% Cap)` : tx.category}
+                        </span>
+                      </td>
+                      <td className={`py-3.5 px-4 font-mono text-sm font-black ${
+                        tx.type === "income" ? "text-emerald-400 font-bold" : "text-slate-400"
+                      }`}>
+                        {tx.type === "income" ? "+" : "-"}{currencySymbol}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTransaction(tx.id)}
+                          className="rounded-lg border border-rose-500/10 bg-rose-500/5 p-2 text-rose-300 hover:text-rose-450 hover:bg-rose-500/15 transition-all duration-100 active:scale-95 cursor-pointer"
+                          aria-label={`Delete transaction ${tx.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
