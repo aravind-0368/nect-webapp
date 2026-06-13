@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Nect",
   description: "A life gamification command center for habits, money, learning, and tasks.",
+  icons: {
+    icon: "/assets/logo/favicon.png",
+  },
 };
 
 export default function RootLayout({

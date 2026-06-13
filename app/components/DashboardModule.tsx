@@ -1,24 +1,23 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { AlertTriangle, AlertCircle, BookOpen } from "lucide-react";
+import {
+  AlertTriangle, AlertCircle, BookOpen, Flame, Zap, Apple,
+  Sparkles, Brain, Dumbbell, Utensils, DollarSign, ListTodo,
+  Calendar, CheckSquare, Square, RefreshCw, Leaf, BicepsFlexed
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
   RadialBarChart,
   RadialBar
 } from "recharts";
+import { useNectStore, getActiveRank } from "../store/useNectStore";
 
 type PriorityLevel = "low" | "medium" | "high";
 
@@ -80,34 +79,31 @@ interface ExamRecord {
 interface DashboardModuleProps {
   points: number;
   accentColor: string;
-  visibleModules: Record<string, boolean>;
+  weight?: number;
+  height?: number;
 }
 
-export interface RankTier {
-  name: string;
-  min: number;
-  max: number;
-  color: string;
-  description: string;
-}
+export function DashboardModule({ points, accentColor, weight: propWeight, height: propHeight }: DashboardModuleProps) {
+  const {
+    powerStreak,
+    smartStreak,
+    healthyStreak,
+    visibleModules,
+    awardPoints,
+    peakMentalPowerUntil
+  } = useNectStore();
 
-export const rankTiers: RankTier[] = [
-  { name: "Outcast", min: 0, max: 499, color: "#555555", description: "A nameless nobody forgotten by the world." },
-  { name: "Vanguard", min: 500, max: 1499, color: "#990000", description: "The frontline soldier who refuses to die." },
-  { name: "Sorcerer", min: 1500, max: 3499, color: "#00008B", description: "Awakened power. A master of reality-bending manipulation." },
-  { name: "Archon", min: 3500, max: 7499, color: "#00FFFF", description: "A living storm. Your mere presence commands the room." },
-  { name: "Dread-General", min: 7500, max: 14999, color: "#74888C", description: "The Shift. Commander of armies. Empires tremble at your name." },
-  { name: "High-Lord", min: 15000, max: 29999, color: "#6A0DAD", description: "Absolute sovereignty. You own the landscape and rule the economy." },
-  { name: "Overlord", min: 30000, max: 59999, color: "#FFD700", description: "Unchecked dominion. You have conquered everything in the mortal realm." },
-  { name: "Monarch", min: 60000, max: 99999, color: "#4B0082", description: "A supreme, undying king of life and death." },
-  { name: "Demiurge", min: 100000, max: Infinity, color: "#E5E4E2", description: "The Creator. You have surpassed the system. You design the cosmos." }
-];
+  const isPeakMentalPowerActive = useMemo(() => {
+    return peakMentalPowerUntil ? Date.now() < peakMentalPowerUntil : false;
+  }, [peakMentalPowerUntil]);
 
-export function getActiveRank(points: number): RankTier {
-  return rankTiers.find((tier) => points >= tier.min && points <= tier.max) || rankTiers[0];
-}
+  const weight = propWeight ?? 75;
+  const height = propHeight ?? 180;
 
-export function DashboardModule({ points, accentColor, visibleModules }: DashboardModuleProps) {
+  const caloriesTarget = useMemo(() => Math.round(weight * 30), [weight]);
+  const proteinTarget = useMemo(() => Math.round(weight * 2.0), [weight]);
+  const fiberTarget = useMemo(() => Math.round(height / 7), [height]);
+
   // --- LOCAL STATES LOADED FROM STORAGE ---
   const [tasks, setTasks] = useState<Task[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -132,33 +128,29 @@ export function DashboardModule({ points, accentColor, visibleModules }: Dashboa
 
   const activeRank = useMemo(() => getActiveRank(points), [points]);
 
-  const progressPercent = useMemo(() => {
-    if (activeRank.max === Infinity) return 100;
-    const numerator = points - activeRank.min;
-    const denominator = activeRank.max - activeRank.min;
-    return Math.min(100, Math.max(0, (numerator / denominator) * 100));
-  }, [points, activeRank]);
+  const levelInfo = useMemo(() => {
+    const currentLevel = Math.floor(points / 1000) + 1;
+    const currentXp = points % 1000;
+    const progress = (currentXp / 1000) * 100;
+    return { level: currentLevel, xp: currentXp, progress };
+  }, [points]);
 
   // --- LOCAL STORAGE DATA HYDRATION ---
   useEffect(() => {
     const timer = setTimeout(() => {
-      // 1. Tasks
       const storedTasks = localStorage.getItem("nect_tasks");
       if (storedTasks) setTasks(JSON.parse(storedTasks));
 
-      // 2. Ledger
       const storedTx = localStorage.getItem("nect_money_transactions");
       const storedCat = localStorage.getItem("nect_money_categories");
       if (storedTx) setTransactions(JSON.parse(storedTx));
       if (storedCat) setCategories(JSON.parse(storedCat));
 
-      // 3. Workouts
       const storedWorkouts = localStorage.getItem("nect_workout_items");
       const storedRest = localStorage.getItem("nect_workout_rest_days");
       if (storedWorkouts) setWorkouts(JSON.parse(storedWorkouts));
       if (storedRest) setRestDays(JSON.parse(storedRest));
 
-      // 4. Learning
       const storedSessions = localStorage.getItem("nect_learning_sessions");
       const storedRevs = localStorage.getItem("nect_learning_revisions");
       const storedExams = localStorage.getItem("nect_learning_exams");
@@ -166,7 +158,6 @@ export function DashboardModule({ points, accentColor, visibleModules }: Dashboa
       if (storedRevs) setRevisions(JSON.parse(storedRevs));
       if (storedExams) setExams(JSON.parse(storedExams));
 
-      // 5. Food
       const storedPlate = localStorage.getItem("nect_food_plate_items");
       if (storedPlate) setFoodPlate(JSON.parse(storedPlate));
     }, 0);
@@ -174,709 +165,959 @@ export function DashboardModule({ points, accentColor, visibleModules }: Dashboa
     return () => clearTimeout(timer);
   }, []);
 
-  // --- HIGH ALERT CALCULATION ---
-  const [alertFeed, setAlertFeed] = useState<{ id: string; type: "crimson" | "amber"; message: string }[]>([]);
+  // --- 5-SECOND SCANNING SEQUENCE ---
+  const [isScanning, setIsScanning] = useState(true);
+  const [scanProgress, setScanProgress] = useState(0);
+
+  const handleStartScan = () => {
+    setIsScanning(true);
+    setScanProgress(0);
+  };
 
   useEffect(() => {
-    const alerts: { id: string; type: "crimson" | "amber"; message: string }[] = [];
-
-    // Exam countdown alert (Learning module)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const examList = exams.length > 0 ? exams : [
-      { id: 5, title: "AI Engineering Final", isMain: true, totalMarks: 100, gainedMarks: 0, date: new Date(today.getTime() + 4 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] }
-    ];
-
-    examList.forEach((e) => {
-      if (e.isMain && e.date) {
-        const examDate = new Date(e.date);
-        examDate.setHours(0, 0, 0, 0);
-        const diffTime = examDate.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays >= 0 && diffDays < 10) {
-          alerts.push({
-            id: `exam-${e.id}`,
-            type: "crimson",
-            message: `🚨 ${e.title} in ${diffDays} Days`
-          });
+    if (!isScanning) return;
+    const interval = setInterval(() => {
+      setScanProgress((prev) => {
+        if (prev >= 100) {
+          setIsScanning(false);
+          clearInterval(interval);
+          return 100;
         }
-      }
-    });
+        return prev + 2; // Increments by 2 every 100ms -> 50 intervals -> 5 seconds total
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isScanning]);
 
-    // Budget threshold warning (Money module)
-    const catList = categories.length > 0 ? categories : [
-      { name: "Food", color: "#f59e0b", monthlyLimit: 500 },
-      { name: "Rent & Utilities", color: "#ef4444", monthlyLimit: 1200 },
-      { name: "Subscriptions", color: "#a855f7", monthlyLimit: 80 }
-    ];
-    const txList = transactions.length > 0 ? transactions : [
-      { id: "tx-2", name: "Rent", type: "expense", category: "Rent & Utilities", amount: 1000, date: "2026-06-01" },
-      { id: "tx-3", name: "Groceries", type: "expense", category: "Food", amount: 280, date: "2026-06-04" },
-      { id: "tx-5", name: "Fast Food", type: "expense", category: "Food", amount: 130, date: "2026-06-07" }
-    ] as Transaction[];
-
-    const expensesCurrentMonth = txList.filter(t => t.type === "expense" && t.date.startsWith("2026-06"));
-    
-    catList.forEach((cat) => {
-      if (cat.monthlyLimit && cat.monthlyLimit > 0) {
-        const spent = expensesCurrentMonth
-          .filter((t) => t.category === cat.name)
-          .reduce((sum, t) => sum + t.amount, 0);
-        
-        if (spent >= cat.monthlyLimit * 0.8) {
-          const ratio = Math.round((spent / cat.monthlyLimit) * 100);
-          alerts.push({
-            id: `budget-${cat.name}`,
-            type: "amber",
-            message: `⚠️ Budget Cap Limit: ${cat.name} spent is at ${ratio}% (${spent}/${cat.monthlyLimit})`
-          });
-        }
-      }
-    });
-
-    const timer = setTimeout(() => {
-      setAlertFeed(alerts);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [exams, categories, transactions]);
-
-  // --- CHART METRICS DATA ---
-  
-  // Row A: Workout Consistency Radial Bar Data
-  const workoutChartData = useMemo(() => {
-    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    
-    const itemsList = workouts.length > 0 ? workouts : [
-      { id: 1, day: "Monday", bodyPart: "Chest", name: "Incline", reps: 12, sets: 4, checkedSets: [true, true, true, true] },
-      { id: 2, day: "Monday", bodyPart: "Chest", name: "Flyes", reps: 15, sets: 3, checkedSets: [true, true, true] },
-      { id: 3, day: "Wednesday", bodyPart: "Legs", name: "Squat", reps: 10, sets: 4, checkedSets: [true, true, false, false] },
-      { id: 4, day: "Friday", bodyPart: "Back", name: "Lat", reps: 12, sets: 4, checkedSets: [false, false, false, false] }
-    ] as WorkoutItem[];
-
-    const rest = Object.keys(restDays).length > 0 ? restDays : {
-      Monday: false, Tuesday: false, Wednesday: false, Thursday: true, Friday: false, Saturday: false, Sunday: true
+  // --- MUSCLE GROUP WEEKLY LOG CALCULATION ---
+  const muscleGroupsProgress = useMemo(() => {
+    const defaultFallbacks = {
+      chest: 85,
+      legs: 45,
+      back: 62,
+      arms: 90,
+      abs: 20
     };
 
-    return days.map((day) => {
-      const isRest = rest[day];
-      if (isRest) {
-        return { name: day, value: 100, fill: "#10b981" }; // Green for rest days (consistent)
+    const groups = ["chest", "legs", "back", "arms", "abs"];
+    const results: Record<string, number> = {};
+
+    groups.forEach((group) => {
+      const related = workouts.filter((w) => {
+        const bp = w.bodyPart.toLowerCase();
+        if (group === "chest") return bp.includes("chest");
+        if (group === "legs") return bp.includes("leg");
+        if (group === "back") return bp.includes("back") || bp.includes("shoulder");
+        if (group === "arms") return bp.includes("arm") || bp.includes("bicep") || bp.includes("tricep");
+        if (group === "abs") return bp.includes("abs") || bp.includes("core");
+        return false;
+      });
+
+      if (related.length === 0) {
+        results[group] = defaultFallbacks[group as keyof typeof defaultFallbacks];
+        return;
       }
-      const dayItems = itemsList.filter((item) => item.day === day);
-      if (dayItems.length === 0) {
-        return { name: day, value: 0, fill: "#334155" };
-      }
-      const totalSets = dayItems.reduce((sum, item) => sum + (item.sets || 0), 0);
-      const doneSets = dayItems.reduce((sum, item) => sum + (item.checkedSets ? item.checkedSets.filter(Boolean).length : 0), 0);
-      const pct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
-      
-      return {
-        name: day,
-        value: pct,
-        fill: pct >= 100 ? "#10b981" : pct > 0 ? "#f59e0b" : "#ef4444"
-      };
-    }).reverse(); // Recharts RadialBarChart stacks from outside in, so reverse displays Mon outer, Sun inner
-  }, [workouts, restDays]);
 
-  // Row A: Weekly Task execution Grouped Bar Chart
-  const taskChartData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const baseTasks = tasks.length > 0 ? tasks : [
-      { id: "task-1", title: "Task 1", completed: false, priority: "high" },
-      { id: "task-2", title: "Task 2", completed: true, priority: "medium" },
-      { id: "task-3", title: "Task 3", completed: true, priority: "low" }
-    ] as Task[];
+      let totalSets = 0;
+      let completedSets = 0;
+      related.forEach((item) => {
+        const setsCount = item.sets || 0;
+        totalSets += setsCount;
+        completedSets += item.checkedSets ? item.checkedSets.filter(Boolean).length : 0;
+      });
 
-    // Distribute actual completed/not completed counts across the week dynamically
-    // Seed with nice defaults to look realistic
-    const completedCounts = [3, 2, 4, 1, 5, 2, 1];
-    const pendingCounts = [1, 2, 0, 3, 1, 0, 2];
+      results[group] = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
+    });
 
-    // If actual tasks are loaded, scale the active today slot (Monday/Wednesday etc)
-    const todayDay = new Date().getDay(); // 0 is Sunday, 1 is Monday
-    const todayIndex = todayDay === 0 ? 6 : todayDay - 1;
+    return results;
+  }, [workouts]);
 
-    completedCounts[todayIndex] = baseTasks.filter(t => t.completed).length;
-    pendingCounts[todayIndex] = baseTasks.filter(t => !t.completed).length;
+  // Dynamic Color helpers
+  const getMuscleColor = (pct: number) => {
+    if (pct < 50) return { stroke: "#ef4444", fill: "#ef444420", text: "text-red-400" };
+    if (pct <= 70) return { stroke: "#f59e0b", fill: "#f59e0b20", text: "text-amber-400" };
+    return { stroke: "#10b981", fill: "#10b98120", text: "text-emerald-450" };
+  };
 
-    return days.map((day, idx) => ({
-      name: day,
-      Completed: completedCounts[idx],
-      Pending: pendingCounts[idx]
-    }));
-  }, [tasks]);
+  const segmentStroke = (group: string) => {
+    if (isScanning) return "#22d3ee";
+    if (group === "head") {
+      if (isPeakMentalPowerActive) return "#c084fc";
+      return hoveredZone === "head" ? "#818cf8" : "#475569";
+    }
+    if (hoveredZone === group) {
+      const pct = muscleGroupsProgress[group];
+      return getMuscleColor(pct).stroke;
+    }
+    return "#475569";
+  };
 
-  // Row B: Fuel Target Progress Stacked Bars (Cal, Pro, Fib)
-  const nutritionGauges = useMemo(() => {
-    // Current totals
+  const segmentFill = (group: string) => {
+    if (isScanning) return "#22d3ee08";
+    if (group === "head") {
+      if (isPeakMentalPowerActive) return "rgba(168, 85, 247, 0.25)";
+      return hoveredZone === "head" ? "rgba(129, 140, 248, 0.15)" : "rgba(71, 85, 105, 0.05)";
+    }
+    if (hoveredZone === group) {
+      const pct = muscleGroupsProgress[group];
+      return getMuscleColor(pct).fill;
+    }
+    return "#47556908";
+  };
+
+  const [hoveredZone, setHoveredZone] = useState<"chest" | "legs" | "back" | "arms" | "abs" | "head" | null>(null);
+
+  // --- OTHERS DATA ENGINE ---
+  const foodTelemetry = useMemo(() => {
     const plateList = foodPlate.length > 0 ? foodPlate : [
-      { quantity: 1.5, calories: 150, protein: 5, fiber: 4, checked: true },
-      { quantity: 1, calories: 105, protein: 1.3, fiber: 3, checked: false }
+      { calories: 350, protein: 25, fiber: 6, quantity: 1, checked: true }
     ];
-    
     let calories = 0;
     let protein = 0;
     let fiber = 0;
-
-    plateList.forEach((item) => {
+    plateList.forEach(item => {
       if (item.checked) {
         calories += Math.round(item.calories * item.quantity);
-        protein += Math.round(item.protein * item.quantity * 10) / 10;
-        fiber += Math.round(item.fiber * item.quantity * 10) / 10;
+        protein += Math.round(item.protein * item.quantity);
+        fiber += Math.round(item.fiber * item.quantity);
       }
     });
-
-    const targetCal = 2250;
-    const targetPro = 150;
-    const targetFib = 25;
-
-    return [
-      { label: "Calories", current: calories, target: targetCal, pct: Math.min(100, Math.round((calories / targetCal) * 100)), unit: "kcal", color: "from-amber-400 to-amber-500" },
-      { label: "Protein", current: Math.round(protein), target: targetPro, pct: Math.min(100, Math.round((protein / targetPro) * 100)), unit: "g", color: "from-indigo-400 to-indigo-500" },
-      { label: "Fiber", current: Math.round(fiber), target: targetFib, pct: Math.min(100, Math.round((fiber / targetFib) * 100)), unit: "g", color: "from-emerald-400 to-emerald-500" }
-    ];
+    return {
+      calories,
+      targetCal: 2250,
+      protein,
+      fiber
+    };
   }, [foodPlate]);
 
-  // Row B: Money Category Expense Pie/Donut Allocation
-  const expensePieData = useMemo(() => {
-    const txList = transactions.length > 0 ? transactions : [
-      { id: "tx-2", name: "Rent", type: "expense", category: "Rent & Utilities", amount: 1000, date: "2026-06-01" },
-      { id: "tx-3", name: "Groceries", type: "expense", category: "Food", amount: 280, date: "2026-06-04" },
-      { id: "tx-5", name: "Fast Food", type: "expense", category: "Food", amount: 130, date: "2026-06-07" }
-    ] as Transaction[];
+  // Learning metrics
+  const learningTelemetry = useMemo(() => {
+    const studyHours = sessions.reduce((sum, s) => sum + (s.hours || 0) + (s.minutes || 0) / 60, 0);
+    const hours = studyHours > 0 ? Math.round(studyHours * 10) / 10 : 4.5;
+    const target = 10;
 
-    const catList = categories.length > 0 ? categories : [
-      { name: "Salary", color: "#10b981" },
-      { name: "Freelance", color: "#3b82f6" },
-      { name: "Food", color: "#f59e0b" },
-      { name: "Rent & Utilities", color: "#ef4444" },
-      { name: "Subscriptions", color: "#a855f7" },
-      { name: "Other", color: "#64748b" }
-    ];
+    // Nearest active exam
+    const todayStr = new Date().toISOString().split("T")[0];
+    const activeExams = exams.filter(e => e.date && e.date >= todayStr);
+    const closestExam = activeExams.length > 0
+      ? [...activeExams].sort((a, b) => a.date!.localeCompare(b.date!))[0]
+      : null;
 
-    const categoryTotals: Record<string, number> = {};
-    txList.filter(t => t.type === "expense").forEach((t) => {
-      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
-    });
+    return { hours, target, closestExam };
+  }, [sessions, exams]);
 
-    const data = Object.keys(categoryTotals).map((catName) => {
-      const catColor = catList.find(c => c.name === catName)?.color || "#64748b";
-      return {
-        name: catName,
-        value: categoryTotals[catName],
-        color: catColor
-      };
-    });
+  // Task metrics
+  const taskTelemetry = useMemo(() => {
+    const completed = tasks.filter(t => t.completed).length;
+    const total = tasks.length;
+    return { completed, total };
+  }, [tasks]);
 
-    if (data.length === 0) {
-      return [{ name: "No Expenses Logged", value: 100, color: "#334155" }];
+  // --- RESOURCE FLOW DATA (Last 7 Days) ---
+  const resourceFlowData = useMemo(() => {
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
     }
 
-    return data;
-  }, [transactions, categories]);
-
-  // Row C: Money Net Worth Spline Area
-  const netWorthChartData = useMemo(() => {
-    // Generate dates representing trailing rolling days
     const txList = transactions.length > 0 ? transactions : [
-      { id: "tx-1", name: "Salary", type: "income", category: "Salary", amount: 3200, date: "2026-06-01" },
-      { id: "tx-2", name: "Rent", type: "expense", category: "Rent & Utilities", amount: 1000, date: "2026-06-01" },
-      { id: "tx-3", name: "Groceries", type: "expense", category: "Food", amount: 280, date: "2026-06-04" },
-      { id: "tx-4", name: "Freelance", type: "income", category: "Freelance", amount: 850, date: "2026-06-05" },
-      { id: "tx-5", name: "Takeout", type: "expense", category: "Food", amount: 130, date: "2026-06-07" }
+      { id: "1", type: "income", amount: 400, date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
+      { id: "2", type: "expense", amount: 120, date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
+      { id: "3", type: "income", amount: 250, date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
+      { id: "4", type: "expense", amount: 90, date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] }
     ] as Transaction[];
 
-    // Start balance
-    let rollingBalance = 2400; // base seeding
-    
-    // Sort transactions by date ascending
-    const sorted = [...txList].sort((a,b) => a.date.localeCompare(b.date));
-    
-    const balanceByDate: Record<string, number> = {};
-    // Seed rolling
-    balanceByDate["2026-05-30"] = rollingBalance;
+    return dates.map((dateStr) => {
+      const dayTxs = txList.filter(t => t.date === dateStr);
+      const income = dayTxs.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
+      const expense = dayTxs.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+      const dateObj = new Date(dateStr + "T00:00:00");
+      const label = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-    sorted.forEach((t) => {
-      if (t.type === "income") {
-        rollingBalance += t.amount;
-      } else {
-        rollingBalance -= t.amount;
-      }
-      balanceByDate[t.date] = rollingBalance;
-    });
-
-    // Make trailing points
-    const dates = ["06-01", "06-02", "06-03", "06-04", "06-05", "06-06", "06-07"];
-    let lastKnown = 2400;
-
-    return dates.map((d) => {
-      const fullDate = `2026-${d}`;
-      if (balanceByDate[fullDate] !== undefined) {
-        lastKnown = balanceByDate[fullDate];
-      }
-      return {
-        date: d,
-        "Net Worth": lastKnown
-      };
+      return { name: label, income, expense };
     });
   }, [transactions]);
 
-  // Row C: Academic Trajectory Spline Chart
-  const academicChartData = useMemo(() => {
-    const examList = exams.length > 0 ? exams : [
-      { id: 1, title: "Data Structures Quiz", isMain: false, totalMarks: 50, gainedMarks: 40 },
-      { id: 2, title: "Algorithms Midterm", isMain: true, totalMarks: 100, gainedMarks: 85, date: "2026-05-24" },
-      { id: 3, title: "Discrete Math Test", isMain: false, totalMarks: 20, gainedMarks: 12 },
-      { id: 4, title: "Systems Midterm", isMain: true, totalMarks: 100, gainedMarks: 92, date: "2026-06-03" }
-    ] as ExamRecord[];
+  // Radial Chart Gauge Data for Study progress
+  const studyProgressData = useMemo(() => {
+    const value = Math.min(100, Math.round((learningTelemetry.hours / learningTelemetry.target) * 100));
+    return [{
+      name: "Study",
+      value: value || 45,
+      fill: "var(--rank-accent)"
+    }];
+  }, [learningTelemetry]);
 
-    // Return score percentages
-    return examList
-      .filter((e) => e.gainedMarks > 0)
-      .map((e) => {
-        const pct = Math.round((e.gainedMarks / e.totalMarks) * 100);
-        return {
-          name: e.title.replace("Quiz", "Qz").replace("Midterm", "Mid").replace("Final", "Fin"),
-          Score: pct,
-          isMain: e.isMain
-        };
-      });
-  }, [exams]);
-
-  // --- ACADEMIC SYNC CARDS ---
-  const academicSyncInfo = useMemo(() => {
-    const activeSessions = sessions.length > 0 ? sessions : [
-      { subject: "Data Structures" }, { subject: "Advanced Algorithms" },
-      { subject: "Discrete Mathematics" }, { subject: "Operating Systems" },
-      { subject: "Systems Architecture" }, { subject: "AI Engineering" }
-    ];
-    const activeRevs = revisions.length > 0 ? revisions : [
-      { name: "Data Structures", checked: true },
-      { name: "Advanced Algorithms", checked: false },
-      { name: "Operating Systems", checked: true },
-      { name: "Systems Architecture", checked: false }
-    ];
-
-    const uniqueSubjectsStudied = new Set(activeSessions.map((s) => s.subject)).size;
-    const completedRevs = activeRevs.filter(r => r.checked).length;
-
-    return {
-      studied: uniqueSubjectsStudied,
-      revisions: completedRevs
-    };
-  }, [sessions, revisions]);
-
-  // --- CUSTOM RENDERERS ---
-  const renderCustomDot = (props: { cx?: number; cy?: number; payload?: { isMain?: boolean } }) => {
-    const { cx, cy, payload } = props;
-    if (payload && payload.isMain) {
-      return (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={7}
-          fill={activeRank.color}
-          stroke="#ffffff"
-          strokeWidth={2}
-          key={`dot-main-${cx}-${cy}`}
-          style={{ filter: `drop-shadow(0 0 5px ${activeRank.color})` }}
-        />
-      );
-    }
-    return (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={4}
-        fill="#94a3b8"
-        stroke="#1e293b"
-        strokeWidth={1.5}
-        key={`dot-normal-${cx}-${cy}`}
-      />
-    );
+  // Toggle Dashboard Task Complete status
+  const toggleDashboardTask = (taskId: string) => {
+    const updatedTasks = tasks.map(t => {
+      if (t.id === taskId) {
+        const nextCompleted = !t.completed;
+        if (nextCompleted) {
+          awardPoints(50, "Tasks");
+        }
+        return { ...t, completed: nextCompleted };
+      }
+      return t;
+    });
+    setTasks(updatedTasks);
+    localStorage.setItem("nect_tasks", JSON.stringify(updatedTasks));
   };
-
-  const svgRingRadius = 68;
-  const svgRingWidth = 9;
-  const svgRingCircumference = 2 * Math.PI * svgRingRadius;
-  const svgRingOffset = svgRingCircumference - (progressPercent / 100) * svgRingCircumference;
 
   return (
     <section className="space-y-6 animate-fade-in-up">
-      
-      {/* Header and Live Alert Feed Row */}
-      <div className="grid gap-5 md:grid-cols-[1fr_340px]">
-        {/* Dynamic Rank Title Display */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}35` }}
-        >
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-            Active Workspace Command
-          </p>
-          <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl tracking-wider">
-            COMMAND COMMAND CENTER
-          </h1>
-          <p className="mt-3 text-slate-400 leading-relaxed text-sm">
-            Nect unifies your entire day. Your cosmic status is determined by daily progress, fitness consistency, study logs, budget limits, and complete tasks.
-          </p>
-
-          <div className="mt-4 flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-400">Current Theme Aura:</span>
-            <span 
-              className="inline-flex rounded-full px-3.5 py-1 text-2xs font-black uppercase tracking-wider text-slate-100 border transition-all duration-300"
-              style={{
-                backgroundColor: `${activeRank.color}15`,
-                borderColor: `${activeRank.color}45`,
-                boxShadow: `0 0 14px ${activeRank.color}20`
-              }}
-            >
-              {activeRank.name} ({activeRank.color})
-            </span>
-          </div>
-        </div>
-
-        {/* Live Alerts Feed panel */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm overflow-hidden flex flex-col justify-between"
-          style={{ borderColor: alertFeed.length > 0 ? "#ef444435" : "border-slate-800" }}
-        >
-          <div>
-            <h3 className="text-xs font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-2 border-b border-slate-800/60 pb-2.5">
-              <AlertCircle className="h-4 w-4 text-rose-400" /> Live High Alert Feed
-            </h3>
-            
-            <div className="mt-3.5 space-y-2.5 max-h-36 overflow-y-auto pr-1">
-              {alertFeed.length === 0 ? (
-                <p className="text-xs text-slate-500 font-semibold italic py-2">
-                  No active countdown flags or budget breaches detected. All systems clear.
-                </p>
-              ) : (
-                alertFeed.map((alert) => (
-                  <div 
-                    key={alert.id}
-                    className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs font-semibold leading-relaxed transition-all duration-300 ${
-                      alert.type === "crimson"
-                        ? "bg-rose-500/10 border-rose-500/20 text-rose-350 animate-pulse"
-                        : "bg-amber-500/10 border-amber-500/20 text-amber-350"
-                    }`}
-                  >
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{alert.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          
-          <div className="mt-4 border-t border-slate-800/40 pt-3 flex justify-between items-center text-2xs font-bold text-slate-500">
-            <span>Aggregating active logs</span>
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-          </div>
-        </div>
-      </div>
-
-      {/* Hero Central Circle Center Stage */}
-      <div 
-        className="rounded-2xl border bg-slate-900/40 p-8 backdrop-blur-sm transition-all duration-500 flex flex-col items-center justify-center relative overflow-hidden"
-        style={{ borderColor: `${activeRank.color}35` }}
+      {/* 1. TOP STATUS HEADER (Progress & Streaks) */}
+      <div
+        className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300 flex flex-wrap gap-5 items-center justify-between"
+        style={{ borderColor: `${accentColor}30`, boxShadow: `0 4px 20px ${accentColor}08` }}
       >
-        <div className="absolute top-1/2 left-1/2 w-64 h-64 -translate-x-1/2 -translate-y-1/2 bg-[var(--rank-accent)]/5 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Central Circular progress ring */}
-        <div className="relative flex h-56 w-56 items-center justify-center select-none active:scale-98 transition-transform duration-100">
-          <svg className="absolute inset-0 h-full w-full -rotate-90">
-            <circle
-              cx="112"
-              cy="112"
-              r={svgRingRadius}
-              stroke="#1e293b"
-              strokeWidth={svgRingWidth}
-              fill="transparent"
-            />
-            <circle
-              cx="112"
-              cy="112"
-              r={svgRingRadius}
-              stroke={activeRank.color}
-              strokeWidth={svgRingWidth}
-              fill="transparent"
-              strokeDasharray={svgRingCircumference}
-              strokeDashoffset={svgRingOffset}
-              strokeLinecap="round"
-              style={{
-                filter: `drop-shadow(0 0 12px ${activeRank.color}60)`,
-                transition: "stroke-dashoffset 0.8s ease-in-out, stroke 0.5s ease"
-              }}
-            />
-          </svg>
-
-          {/* Inner aura details */}
-          <div className="text-center z-10 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
-              Cosmic Rank
-            </p>
-            <h2 
-              className="mt-1 text-2xl font-black uppercase tracking-widest transition-colors duration-300"
-              style={{
-                color: activeRank.color,
-                textShadow: `0 0 16px ${activeRank.color}40`
-              }}
-            >
-              {activeRank.name}
-            </h2>
-            <p className="mt-1.5 text-2xs font-bold text-slate-400 leading-normal">
-              {activeRank.max === Infinity ? "Demiurge Peak" : `${Math.round(progressPercent)}% to Next Tier`}
-            </p>
+        {/* Left Level Badge & Progress Slider */}
+        <div className="flex flex-1 min-w-[280px] items-center gap-4">
+          <div
+            className="h-12 w-12 rounded-xl flex flex-col items-center justify-center border font-black text-white shrink-0 shadow-lg"
+            style={{
+              backgroundColor: `${accentColor}15`,
+              borderColor: accentColor,
+              textShadow: `0 0 10px ${accentColor}60`
+            }}
+          >
+            <span className="text-[10px] text-slate-400 font-bold uppercase -mb-0.5">LVL</span>
+            <span className="text-lg leading-none">{levelInfo.level}</span>
           </div>
-        </div>
-
-        {/* Short motivational description tag */}
-        <p className="mt-4 text-xs font-semibold text-center max-w-md text-slate-400 italic">
-          &ldquo;{activeRank.description}&rdquo;
-        </p>
-      </div>
-
-      {/* Row A Charts Grid (Workout Consistency & Task Execution Ratio) */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Workout Consistency radial rings */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-4">
-            🏋️ WORKOUT CONSISTENCY MATRIX
-          </h3>
-          <div className="h-64 flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadialBarChart 
-                cx="50%" 
-                cy="50%" 
-                innerRadius="15%" 
-                outerRadius="90%" 
-                barSize={7} 
-                data={workoutChartData}
-              >
-                <RadialBar
-                  background={{ fill: "#3341551a" }}
-                  dataKey="value"
-                  cornerRadius={6}
-                />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "#0b0f19", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px", fontFamily: "sans-serif" }} 
-                  itemStyle={{ color: "#f8fafc" }}
-                />
-              </RadialBarChart>
-            </ResponsiveContainer>
-            
-            {/* Custom overlay labels for radial legend */}
-            <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-x-3 gap-y-1 justify-center text-[10px] font-black uppercase text-slate-500">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Done/Rest</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> In Progress</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Pending</span>
+          <div className="flex-1 space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <span className="uppercase tracking-wider font-black">{activeRank.name} RECRUIT</span>
+              <span className="text-slate-450">{levelInfo.xp} / 1000 XP ({Math.round(levelInfo.progress)}%)</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-800">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${levelInfo.progress}%`,
+                  backgroundColor: accentColor,
+                  boxShadow: `0 0 10px ${accentColor}60`
+                }}
+              />
             </div>
           </div>
         </div>
 
-        {/* Weekly Task Execution dual bar */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-4">
-            📊 WEEKLY TASK RATIO
-          </h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "#0b0f19", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px" }}
-                  itemStyle={{ color: "#f8fafc" }}
-                />
-                <Bar dataKey="Completed" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Pending" fill="#475569" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Row B Charts Grid (Nutrition Gauges & Expense Donut Allocation) */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Fuel targets progress gauges */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-5">
-            🍏 FUEL TARGET PROGRESS
-          </h3>
-          
-          <div className="space-y-5">
-            {nutritionGauges.map((gauge) => (
-              <div key={gauge.label} className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-350">{gauge.label} Intake</span>
-                  <span className="font-black text-slate-200">
-                    {gauge.current} / {gauge.target} <span className="text-slate-500 font-semibold">{gauge.unit}</span> ({gauge.pct}%)
-                  </span>
-                </div>
-                <div className="h-2.5 rounded-full bg-slate-950 overflow-hidden border border-slate-800/40">
-                  <div 
-                    className={`h-full rounded-full bg-gradient-to-r ${gauge.color} transition-all duration-500`}
-                    style={{ width: `${gauge.pct}%` }}
-                  />
-                </div>
+        {/* Right Cosmic Streaks Matrix */}
+        <div className="flex flex-wrap items-center gap-3">
+          {visibleModules.Workout && (
+            <div className="flex items-center gap-2 rounded-xl bg-slate-955 border border-slate-850 px-3.5 py-2">
+              <Flame className="h-4 w-4 text-orange-500 animate-pulse" />
+              <div className="text-left leading-none">
+                <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">POWER STREAK</span>
+                <span className="text-xs font-black text-slate-200 mt-0.5 block">{powerStreak}d</span>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Category Expense allocation Pie chart */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-4">
-            🍕 CATEGORY EXPENSE ALLOCATION
-          </h3>
-          <div className="h-64 flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={expensePieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius="50%"
-                  outerRadius="75%"
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {expensePieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "#0b0f19", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px" }}
-                  itemStyle={{ color: "#f8fafc" }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-
-            {/* Custom floating donut details */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ledger matrix</span>
-              <span className="text-sm font-black text-slate-250 mt-0.5">Distribution</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Row C Charts Grid (Net Worth Area Spline & Academic Line Chart) */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Net Worth spline area */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-4">
-            📈 NET WORTH FLOW VECTOR
-          </h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={netWorthChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorNetWorth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={activeRank.color} stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor={activeRank.color} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "#0b0f19", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px" }}
-                  itemStyle={{ color: "#f8fafc" }}
-                />
-                <Area type="monotone" dataKey="Net Worth" stroke={activeRank.color} strokeWidth={2.5} fillOpacity={1} fill="url(#colorNetWorth)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Academic score line chart */}
-        <div 
-          className="rounded-2xl border bg-slate-900/40 p-6 backdrop-blur-sm transition-all duration-500"
-          style={{ borderColor: `${activeRank.color}20` }}
-        >
-          <h3 className="text-sm font-black uppercase tracking-wider text-slate-200 border-b border-slate-800 pb-3 mb-4">
-            🎓 ACADEMIC TRAJECTORY MONITOR
-          </h3>
-          
-          {academicChartData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-slate-500 text-xs italic">
-              No quiz or exam score history found. Study to populate milestones.
+          )}
+          {visibleModules.Learning && (
+            <div className="flex items-center gap-2 rounded-xl bg-slate-955 border border-slate-850 px-3.5 py-2">
+              <Zap className="h-4 w-4 text-indigo-400 animate-pulse" />
+              <div className="text-left leading-none">
+                <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">SMART STREAK</span>
+                <span className="text-xs font-black text-slate-200 mt-0.5 block">{smartStreak}d</span>
+              </div>
             </div>
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={academicChartData} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#0b0f19", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px" }}
-                    itemStyle={{ color: "#f8fafc" }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Score" 
-                    stroke="#818cf8" 
-                    strokeWidth={2} 
-                    dot={renderCustomDot}
-                    activeDot={{ r: 8 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+          )}
+          {visibleModules.Food && (
+            <div className="flex items-center gap-2 rounded-xl bg-slate-955 border border-slate-850 px-3.5 py-2">
+              <Apple className="h-4 w-4 text-emerald-400 animate-pulse" />
+              <div className="text-left leading-none">
+                <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider">HEALTHY STREAK</span>
+                <span className="text-xs font-black text-slate-200 mt-0.5 block">{healthyStreak}d</span>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Section 4: Academic Sync metric overview card */}
-      <div 
-        className="rounded-2xl border bg-slate-900/35 p-5 backdrop-blur-sm transition-all duration-500"
-        style={{ borderColor: `${activeRank.color}20` }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <BookOpen className="h-5 w-5" />
+      {/* 1.5 MACRO FUEL CELL CARDS */}
+      {visibleModules.Food && (
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+          {/* Calorie Card (Total Energy Pool) */}
+          {(() => {
+            const isOverloaded = foodTelemetry.calories > caloriesTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.calories / caloriesTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
+                  isOverloaded
+                    ? "border-red-500 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse"
+                    : "border-amber-500/20 bg-slate-900/40 hover:border-amber-500/45 hover:shadow-[0_0_20px_rgba(245,158,11,0.06)]"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isOverloaded ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-amber-500/10 border-amber-500/25 text-amber-400"}`}>
+                      <Zap className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-350 uppercase">CALORIES</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Energy Pool</p>
+                    </div>
+                  </div>
+                  {isOverloaded ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/80 border border-red-800 text-red-350 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(239,68,68,0.2)]">
+                      ⚡ OVERLOAD
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-amber-950/80 border border-amber-900 text-amber-350 px-2 py-0.5 rounded">
+                      STABLE
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.calories} <span className="text-xs text-slate-500 font-bold uppercase font-sans">kcal</span>
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {caloriesTarget} Target
+                    </span>
+                  </div>
+                  
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: isOverloaded ? "#ef4444" : "#f59e0b",
+                        boxShadow: isOverloaded ? "0 0 10px #ef4444" : "0 0 8px #f59e0b"
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Protein Card (Muscle Repair) */}
+          {(() => {
+            const isGoalMet = foodTelemetry.protein >= proteinTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.protein / proteinTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
+                  isGoalMet
+                    ? "border-cyan-400 bg-cyan-950/15 shadow-[0_0_20px_rgba(34,211,238,0.22)]"
+                    : "border-cyan-500/20 bg-slate-900/40 hover:border-cyan-500/45 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-cyan-500/10 border-cyan-400/35 text-cyan-400" : "bg-cyan-500/5 border-cyan-500/15 text-cyan-400"}`}>
+                      <BicepsFlexed className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">PROTEIN</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Muscle Repair</p>
+                    </div>
+                  </div>
+                  {isGoalMet ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-cyan-950/80 border border-cyan-400 text-cyan-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(34,211,238,0.25)]">
+                      ✓ SECURED
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                      CHARGING
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.protein}g
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {proteinTarget}g Target
+                    </span>
+                  </div>
+                  
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: "#22d3ee",
+                        boxShadow: isGoalMet ? "0 0 12px #22d3ee" : "0 0 6px #22d3ee"
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Fiber Card (System Utility) */}
+          {(() => {
+            const isGoalMet = foodTelemetry.fiber >= fiberTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.fiber / fiberTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
+                  isGoalMet
+                    ? "border-emerald-500 bg-emerald-950/15 shadow-[0_0_20px_rgba(16,185,129,0.22)]"
+                    : "border-emerald-500/20 bg-slate-900/40 hover:border-emerald-500/45 hover:shadow-[0_0_20px_rgba(16,185,129,0.06)]"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-405" : "bg-emerald-500/5 border-emerald-500/15 text-emerald-400"}`}>
+                      <Leaf className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">FIBER</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Utility</p>
+                    </div>
+                  </div>
+                  {isGoalMet ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-500 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                      ✓ OPTIMAL
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                      CHARGING
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.fiber.toFixed(1)}g
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {fiberTarget}g Target
+                    </span>
+                  </div>
+                  
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: "#10b981",
+                        boxShadow: isGoalMet ? "0 0 12px #10b981" : "0 0 6px #10b981"
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* 2. MAIN 3-COLUMN ASYMMETRIC GRID VIEW */}
+      <div className="grid gap-6 grid-cols-12">
+        {/* Left Column: Interactive Biometric Matrix SVG (col-span-5) */}
+        <div className="col-span-12 lg:col-span-5 flex flex-col">
+          <div className="p-6 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl relative h-[480px] flex flex-col items-center justify-between overflow-hidden flex-1">
+            {/* Medical Scanning Line Laser */}
+            {isScanning && (
+              <motion.div
+                animate={{ translateY: ["0px", "320px", "0px"] }}
+                transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                className="absolute left-0 right-0 h-[2px] bg-cyan-500/35 shadow-[0_0_12px_rgba(34,211,238,0.7)] z-10 pointer-events-none"
+              />
+            )}
+
+            <div className="w-full flex items-center justify-between border-b border-slate-850 pb-3 mb-2 z-10">
+              <h3 className="text-xs font-black tracking-widest text-slate-450 uppercase flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-cyan-400" /> Biometric Matrix
+              </h3>
+              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest bg-slate-950/80 border border-slate-800 px-2 py-0.5 rounded">
+                Muscle Scanner
+              </span>
             </div>
-            <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-350">
-                📚 Academic Sync Metric Overview
-              </h4>
-              <p className="text-2xs text-slate-500 font-semibold mt-0.5">
-                Calculated weekly study hours vs revision completions
-              </p>
+
+            {/* SVG Interactive Human Asset Base */}
+            <div className="relative w-56 h-[290px] mx-auto py-2">
+              {/* Generated Biometric Base Graphic */}
+              <img 
+                src="/cybernetic_body.png" 
+                alt="Biometric Scan Base" 
+                className="absolute inset-0 w-full h-full object-contain scale-[1.25] pointer-events-none opacity-55 mix-blend-screen z-0 filter brightness-110 contrast-125"
+              />
+              <svg
+                className="absolute inset-0 w-full h-full text-slate-800 transition-all duration-300 filter drop-shadow-[0_0_25px_rgba(34,211,238,0.12)] z-10"
+                viewBox="0 0 100 200"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.0"
+              >
+                {/* 0. HEAD/BRAIN TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("head")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  <circle 
+                    cx="50" 
+                    cy="14" 
+                    r="5" 
+                    stroke={segmentStroke("head")} 
+                    fill={segmentFill("head")} 
+                    className="transition-all duration-300"
+                    strokeWidth="1.2"
+                  />
+                  <circle 
+                    cx="50" 
+                    cy="14" 
+                    r="1.2" 
+                    className={isPeakMentalPowerActive ? "fill-purple-400" : "fill-slate-500"} 
+                  />
+                  {/* Callout line and text */}
+                  <path 
+                    d="M 54,14 L 74,14 L 78,8" 
+                    className={isPeakMentalPowerActive ? "stroke-purple-500/50" : "stroke-slate-500/30"} 
+                    strokeWidth="0.8" 
+                    strokeDasharray="1.5,1.5" 
+                  />
+                  <text 
+                    x="79" 
+                    y="7" 
+                    className={`text-[2.7px] font-mono font-black tracking-wider uppercase ${isPeakMentalPowerActive ? "fill-purple-400" : "fill-slate-400"}`}
+                  >
+                    BRAIN NODE
+                  </text>
+                  <text 
+                    x="79" 
+                    y="10" 
+                    className={`text-[2.0px] font-mono font-bold tracking-wider uppercase ${isPeakMentalPowerActive ? "fill-purple-300/70" : "fill-slate-500"}`}
+                  >
+                    {isPeakMentalPowerActive ? "PEAK MENTAL POWER" : "NORMAL OUTPUT"}
+                  </text>
+                </motion.g>
+
+                {/* 1. CHEST TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("chest")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  <circle 
+                    cx="50" 
+                    cy="52" 
+                    r="8" 
+                    stroke={segmentStroke("chest")} 
+                    fill={segmentFill("chest")} 
+                    className="transition-colors duration-200"
+                    strokeWidth="1.2"
+                  />
+                  <circle cx="50" cy="52" r="1.5" className="fill-cyan-400" />
+                  <path d="M 40,52 L 45,52 M 55,52 L 60,52 M 50,42 L 50,47 M 50,57 L 50,62" className="stroke-cyan-500/35" strokeWidth="0.8" />
+                  {/* Callout line and text */}
+                  <path d="M 58,52 L 74,52 L 78,38" className="stroke-cyan-500/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
+                  <text x="79" y="34" className="fill-cyan-400 text-[2.7px] font-mono font-black tracking-wider uppercase">CHEST STATUS</text>
+                  <text x="79" y="37" className="fill-cyan-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">PECTORALS</text>
+                </motion.g>
+
+                {/* 2. ABS/CORE TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("abs")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  <circle 
+                    cx="50" 
+                    cy="80" 
+                    r="8" 
+                    stroke={segmentStroke("abs")} 
+                    fill={segmentFill("abs")} 
+                    className="transition-colors duration-200"
+                    strokeWidth="1.2"
+                  />
+                  {/* Lightning Bolt */}
+                  <path d="M 50,77 L 48.5,80 L 50,80 L 50,83 L 51.5,80 L 50,80 Z" className="fill-yellow-400 stroke-none" />
+                  <path d="M 58,80 L 74,80 L 78,86" className="stroke-yellow-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
+                  <text x="79" y="85" className="fill-yellow-400 text-[2.7px] font-mono font-black tracking-wider uppercase">ENERGY CORE</text>
+                  <text x="79" y="88" className="fill-yellow-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">MACROS OPTIMAL</text>
+                </motion.g>
+
+                {/* 3. ARMS TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("arms")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  {/* Left Arm HUD Ring */}
+                  <ellipse 
+                    cx="22" 
+                    cy="75" 
+                    rx="6" 
+                    ry="3" 
+                    transform="rotate(-20, 22, 75)" 
+                    stroke={segmentStroke("arms")} 
+                    fill={segmentFill("arms")}
+                    strokeWidth="1.2"
+                  />
+                  {/* Right Arm HUD Ring */}
+                  <ellipse 
+                    cx="78" 
+                    cy="75" 
+                    rx="6" 
+                    ry="3" 
+                    transform="rotate(20, 78, 75)" 
+                    stroke={segmentStroke("arms")} 
+                    fill={segmentFill("arms")}
+                    strokeWidth="1.2"
+                  />
+                  <circle cx="22" cy="75" r="1.5" className="fill-cyan-400" />
+                  <circle cx="78" cy="75" r="1.5" className="fill-cyan-400" />
+                  <path d="M 16,75 L 4,75 L 4,63" className="stroke-cyan-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
+                  {/* Dumbbell Icon representation */}
+                  <path d="M 1,57.5 L 3,57.5 M 1,56.5 L 1,58.5 M 3,56.5 L 3,58.5" className="stroke-cyan-400" strokeWidth="0.8" />
+                  <text x="6" y="57" className="fill-cyan-400 text-[2.7px] font-mono font-black tracking-wider uppercase">UPPER BODY: 82%</text>
+                  <text x="6" y="60" className="fill-cyan-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">STRENGTH / REPAIR</text>
+                </motion.g>
+
+                {/* 4. LEGS TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("legs")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  <circle 
+                    cx="38.5" 
+                    cy="136" 
+                    r="6" 
+                    stroke={segmentStroke("legs")} 
+                    fill={segmentFill("legs")} 
+                    className="transition-colors duration-200"
+                    strokeWidth="1.2"
+                  />
+                  <circle 
+                    cx="61.5" 
+                    cy="136" 
+                    r="6" 
+                    stroke={segmentStroke("legs")} 
+                    fill={segmentFill("legs")} 
+                    className="transition-colors duration-200"
+                    strokeWidth="1.2"
+                  />
+                  <circle cx="38.5" cy="136" r="1.5" className="fill-emerald-400" />
+                  <circle cx="61.5" cy="136" r="1.5" className="fill-emerald-400" />
+                  <path d="M 32.5,136 L 22,136 L 18,145" className="stroke-emerald-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
+                  <text x="2" y="149" className="fill-emerald-400 text-[2.7px] font-mono font-black tracking-wider uppercase">LOWER BODY: 88%</text>
+                  <text x="2" y="152" className="fill-emerald-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">MOBILITY / END</text>
+                </motion.g>
+
+                {/* 5. BACK TARGET (Interactive Zone) */}
+                <motion.g
+                  className="cursor-pointer"
+                  onMouseEnter={() => !isScanning && setHoveredZone("back")}
+                  onMouseLeave={() => setHoveredZone(null)}
+                >
+                  <polygon 
+                    points="50,26 56,31 50,36 44,31" 
+                    stroke={segmentStroke("back")} 
+                    fill={segmentFill("back")} 
+                    className="transition-colors duration-200"
+                    strokeWidth="1.2"
+                  />
+                  <circle cx="50" cy="31" r="1.5" className="fill-indigo-400" />
+                  <path d="M 44,31 L 30,31 L 26,23" className="stroke-indigo-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
+                  <text x="2" y="19" className="fill-indigo-400 text-[2.7px] font-mono font-black tracking-wider uppercase">POSTERIOR CHAIN</text>
+                  <text x="2" y="22" className="fill-indigo-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">BACK METRICS</text>
+                </motion.g>
+
+                {/* Ground Target Metrics */}
+                <g className="pointer-events-none opacity-40">
+                  <line x1="20" y1="192" x2="80" y2="192" className="stroke-cyan-500/40" strokeWidth="0.8" />
+                  <ellipse cx="50" cy="192" rx="32" ry="4" className="stroke-cyan-500/20 fill-none" strokeWidth="0.8" />
+                </g>
+              </svg>
+            </div>
+
+            {/* Context-Aware Diagnostics Telemetry Terminal */}
+            <div className="w-full bg-slate-955/80 border border-slate-850/80 p-3 rounded-xl min-h-[90px] z-10 flex flex-col justify-center">
+              <AnimatePresence mode="wait">
+                {isScanning ? (
+                  <motion.div
+                    key="scanning"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="space-y-2 text-center"
+                  >
+                    <p className="text-[10px] font-black tracking-widest text-cyan-400 uppercase animate-pulse">
+                      Analyzing muscle group telemetry...
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-2 flex-1 rounded-full bg-slate-950 overflow-hidden border border-slate-900">
+                        <div
+                          className="h-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] transition-all duration-100"
+                          style={{ width: `${scanProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-mono font-black text-cyan-400">{scanProgress}%</span>
+                    </div>
+                  </motion.div>
+                ) : hoveredZone ? (
+                  hoveredZone === "head" ? (
+                    <motion.div
+                      key="head"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="space-y-1"
+                    >
+                      <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5 text-purple-405">
+                        <Brain className="h-3.5 w-3.5" /> Brain/Head Telemetry Diagnostics
+                      </p>
+                      <p className="text-xs text-slate-350">
+                        Mental Capacity: <span className="font-black text-white">{isPeakMentalPowerActive ? "PEAK PERFORMANCE" : "NORMAL OUTPUT"}</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        {isPeakMentalPowerActive
+                          ? "🔮 Peak performance active. Your brain node is illuminated with purple electric currents."
+                          : "💤 Normal capacity. Log an exam score above 80% to trigger peak performance."}
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key={hoveredZone}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="space-y-1"
+                    >
+                      <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5" style={{ color: getMuscleColor(muscleGroupsProgress[hoveredZone]).stroke }}>
+                        <Dumbbell className="h-3.5 w-3.5" /> {hoveredZone} Telemetry Diagnostics
+                      </p>
+                      <p className="text-xs text-slate-350">
+                        Weekly Completion: <span className="font-black text-white">{muscleGroupsProgress[hoveredZone]}%</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">
+                        {muscleGroupsProgress[hoveredZone] < 50
+                          ? "⚠️ Underdeveloped area. Increase weekly target sets to improve status."
+                          : muscleGroupsProgress[hoveredZone] <= 70
+                            ? "🟡 Acceptable output. Steady work completed."
+                            : "🟢 High-level execution! Muscle group fully stimulated."
+                        }
+                      </p>
+                    </motion.div>
+                  )
+                ) : (
+                  <motion.div
+                    key="summary"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="space-y-2"
+                  >
+                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
+                      Weekly Muscle Diagnostics Matrix
+                    </p>
+                    <div className="grid grid-cols-5 gap-1.5 text-center">
+                      {["chest", "legs", "back", "arms", "abs"].map((m) => {
+                        const score = muscleGroupsProgress[m];
+                        const status = getMuscleColor(score);
+                        return (
+                          <div key={m} className="bg-slate-955 border border-slate-900 p-1.5 rounded-lg">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase block">{m}</span>
+                            <span className={`text-xs font-black ${status.text} block mt-0.5`}>{score}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {isPeakMentalPowerActive && (
+                      <div className="mt-2 text-center bg-purple-950/40 border border-purple-900/40 px-2.5 py-1.5 rounded-xl shadow-[0_0_10px_rgba(168,85,247,0.15)] flex items-center justify-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                        <span className="text-[9px] font-black text-purple-300 uppercase tracking-wider font-sans">
+                          BRAIN IN PEAK PERFORMANCE
+                        </span>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Scan again button */}
+            {!isScanning && (
+              <button
+                type="button"
+                onClick={handleStartScan}
+                className="mt-3 w-full rounded-xl border border-cyan-500/25 bg-cyan-550/5 hover:bg-cyan-500/10 py-2.5 text-[10px] font-black uppercase tracking-wider text-cyan-400 active:scale-97 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Scan Biometrics Again
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Resource Flow & Skill Tree Tracker (col-span-7) */}
+        <div className="col-span-12 lg:col-span-7 flex flex-col gap-6">
+
+          {/* A. Resource Flow Engine (Money Module) */}
+          <div className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl h-[228px] flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+              <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                <DollarSign className="h-4 w-4 text-emerald-400" /> Resource Flow Engine
+              </h3>
+              <div className="flex items-center gap-3 text-[10px] font-black uppercase text-slate-500">
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
+                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Expense</span>
+              </div>
+            </div>
+
+            <div className="w-full h-36 mt-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={resourceFlowData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="incomeGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="expenseGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                    labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                    itemStyle={{ color: "#f8fafc" }}
+                  />
+                  <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#incomeGlow)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="expense" stroke="#f43f5e" fillOpacity={1} fill="url(#expenseGlow)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          
-          <div className="flex items-center gap-5 text-xs font-black uppercase text-slate-200">
-            <div className="rounded-xl bg-slate-950/40 border border-slate-800 px-4 py-2 text-center">
-              <span className="text-indigo-400 text-sm font-black mr-1">{academicSyncInfo.studied}</span>
-              <span className="text-slate-500 font-bold">Subjects Studied</span>
+
+          {/* B. Skill Tree Tracker (Learning Module) */}
+          <div className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl h-[228px] flex items-center justify-between">
+            <div className="w-1/2 flex flex-col justify-between h-full py-1">
+              <div>
+                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                  <BookOpen className="h-4 w-4 text-indigo-400" /> Skill Matrix Hub
+                </h3>
+                <span className="text-3xl font-black text-slate-100 mt-3 block tracking-wide">
+                  {learningTelemetry.hours} <span className="text-xs text-slate-500 font-bold">HRS</span>
+                </span>
+                <span className="text-[10px] text-slate-550 font-bold uppercase tracking-wider block mt-1">
+                  Study Session Target: {learningTelemetry.target} Hrs
+                </span>
+              </div>
+
+              {/* Exam Alert Notification */}
+              {learningTelemetry.closestExam ? (
+                <div className="flex items-center gap-2 text-red-400 bg-red-950/50 border border-red-800/80 p-2.5 rounded-xl animate-pulse shadow-[0_0_12px_rgba(153,27,27,0.4)]">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+                  <div className="overflow-hidden leading-tight">
+                    <span className="text-[9px] font-black tracking-wider uppercase block text-red-100">CRITICAL WAR</span>
+                    <span className="text-[9px] font-bold text-slate-300 truncate block">
+                      {learningTelemetry.closestExam.title} ({learningTelemetry.closestExam.date})
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-slate-500 bg-slate-950/40 border border-slate-850 p-2 rounded-xl">
+                  <Calendar className="w-4 h-4 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase tracking-wider">No active upcoming exam target</span>
+                </div>
+              )}
             </div>
-            <div className="rounded-xl bg-slate-950/40 border border-slate-800 px-4 py-2 text-center">
-              <span className="text-emerald-450 text-sm font-black mr-1">{academicSyncInfo.revisions}</span>
-              <span className="text-slate-500 font-bold">Revisions Completed</span>
+
+            {/* Radial Loading Gauge */}
+            <div className="w-32 h-32 relative flex items-center justify-center shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadialBarChart
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="70%"
+                  outerRadius="100%"
+                  barSize={10}
+                  data={studyProgressData}
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <RadialBar
+                    background={{ fill: "#33415520" }}
+                    dataKey="value"
+                    cornerRadius={5}
+                  />
+                </RadialBarChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-xl font-black text-slate-200">{studyProgressData[0].value}%</span>
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Focus</span>
+              </div>
             </div>
           </div>
+
         </div>
       </div>
 
+      {/* 3. BOUNTY BOARD NODES (Tasks module Integration) */}
+      <div
+        className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300"
+        style={{ borderColor: `${accentColor}20` }}
+      >
+        <div className="flex items-center justify-between border-b border-slate-850 pb-3 mb-4">
+          <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+            <ListTodo className="h-4 w-4 text-amber-400" /> Bounty Board Nodes
+          </h3>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl">
+            {taskTelemetry.completed} / {taskTelemetry.total} Completed
+          </span>
+        </div>
+
+        {tasks.length === 0 ? (
+          <div className="text-center py-6 text-slate-500 text-xs italic">
+            No bounties active. Add tasks inside the Tasks module to list them here.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {tasks.map((task) => (
+              <div
+                key={task.id}
+                onClick={() => toggleDashboardTask(task.id)}
+                className={`flex items-center gap-3 rounded-xl border p-3.5 bg-slate-950/45 cursor-pointer select-none active:scale-[0.98] transition-all hover:border-slate-700 ${task.completed ? "opacity-60 border-slate-900" : "border-slate-850"
+                  }`}
+              >
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  {task.completed ? (
+                    <CheckSquare className="h-5 w-5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <Square className="h-5 w-5 text-slate-600 shrink-0" />
+                  )}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-bold truncate ${task.completed ? "line-through text-slate-500" : "text-slate-200"}`}>
+                    {task.title}
+                  </p>
+                  <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
+                      ? "bg-rose-950/50 border-rose-900 text-rose-350"
+                      : task.priority === "medium"
+                        ? "bg-amber-950/50 border-amber-900 text-amber-350"
+                        : "bg-slate-900 border-slate-800 text-slate-400"
+                    }`}>
+                    {task.priority}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

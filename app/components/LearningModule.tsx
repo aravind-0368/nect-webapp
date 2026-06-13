@@ -2,8 +2,12 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { BookOpen, Plus, Clock, Award, Star, Trash2, Calendar, Radio } from "lucide-react";
+import { BookOpen, Plus, Clock, Award, Star, Trash2, Calendar, Radio, Lamp, RotateCcw, GraduationCap, Pencil } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { motion } from "framer-motion";
+import { useNectStore } from "../store/useNectStore";
+import { FireStreak } from "./FireStreak";
+import { PowerUpBoost } from "./PowerUpBoost";
 
 type DayName =
   | "Monday"
@@ -63,7 +67,6 @@ const initialRevisions: RevisionSubject[] = [
   { id: 4, name: "Systems Architecture", checked: false },
 ];
 
-// Seed initial exams with a future Main Exam exactly 4 days away to showcase the Crimson Crisis Alert!
 const getFutureDateString = (daysOffset: number) => {
   const d = new Date();
   d.setDate(d.getDate() + daysOffset);
@@ -75,22 +78,27 @@ const initialExams: ExamRecord[] = [
   { id: 2, title: "Algorithms Midterm", isMain: true, totalMarks: 100, gainedMarks: 85, date: getFutureDateString(-15) },
   { id: 3, title: "Discrete Math Test", isMain: false, totalMarks: 20, gainedMarks: 12 },
   { id: 4, title: "Systems Midterm", isMain: true, totalMarks: 100, gainedMarks: 92, date: getFutureDateString(-5) },
-  { id: 5, title: "AI Engineering Final", isMain: true, totalMarks: 100, gainedMarks: 0, date: getFutureDateString(4) }, // 4 days away
+  { id: 5, title: "AI Engineering Final", isMain: true, totalMarks: 100, gainedMarks: 0, date: getFutureDateString(4) },
 ];
 
 const fieldClass =
   "rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500";
 
-type LearningModuleProps = {
-  onAwardPoints: (amount: number) => void;
-};
-
-export function LearningModule({ onAwardPoints }: LearningModuleProps) {
+export function LearningModule() {
   const [activeTab, setActiveTab] = useState<"table" | "vault" | "hub">("table");
   const [sessions, setSessions] = useState<StudySession[]>(initialSessions);
   const [revisions, setRevisions] = useState<RevisionSubject[]>(initialRevisions);
   const [exams, setExams] = useState<ExamRecord[]>(initialExams);
-  const [tomeStreak, setTomeStreak] = useState(7);
+  
+  // Zustand hook
+  const {
+    smartStreak,
+    incrementSmartStreak,
+    decaySmartStreak,
+    awardPoints,
+    triggerPeakMentalPower,
+  } = useNectStore();
+
   const [notification, setNotification] = useState("");
   const [showSplash, setShowSplash] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -134,10 +142,11 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
 
   // Form states - Exam Registry
   const [examTitle, setExamTitle] = useState("");
-  const [examIsMain, setExamIsMain] = useState(false);
   const [totalMarks, setTotalMarks] = useState<number>(100);
   const [gainedMarks, setGainedMarks] = useState<number>(80);
   const [examDate, setExamDate] = useState("");
+  const [isMain, setIsMain] = useState(false);
+  const [editingExamId, setEditingExamId] = useState<number | null>(null);
 
   // Calculate nearest upcoming Main Exam
   const nearestMainExam = useMemo(() => {
@@ -178,7 +187,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
     const totalMinutes = sessions.reduce((sum, s) => sum + s.hours * 60 + s.minutes, 0);
     const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
 
-    // Find most studied subject
     const subjectMap: Record<string, number> = {};
     sessions.forEach((s) => {
       const mins = s.hours * 60 + s.minutes;
@@ -222,7 +230,10 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
     setStudySubject("");
     setStudyHours(1);
     setStudyMinutes(0);
-    setNotification(`Logged ${studyHours}h ${studyMinutes}m study session for ${studySubject}.`);
+    
+    // Award 40 XP for logging a study session
+    awardPoints(40, "Learning");
+    setNotification(`Logged ${studyHours}h ${studyMinutes}m study session. +40 XP awarded.`);
   }
 
   function handleDeleteSession(id: number) {
@@ -246,9 +257,19 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
   }
 
   function handleToggleRevision(id: number) {
+    let wasChecked = false;
+    revisions.forEach((r) => {
+      if (r.id === id) wasChecked = r.checked;
+    });
+
     setRevisions((curr) =>
       curr.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)),
     );
+
+    // Award a minor +10 XP for checking off a revision subject
+    if (!wasChecked) {
+      awardPoints(10, "Learning");
+    }
   }
 
   function handleDeleteRevision(id: number) {
@@ -256,13 +277,12 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
   }
 
   function handleCompleteRevisionCycle() {
-    // Award +20 points
-    onAwardPoints(20);
-    setTomeStreak((curr) => curr + 1);
+    // Award +50 points for cycle complete
+    awardPoints(50, "Learning");
+    incrementSmartStreak();
     setShowSplash(true);
-    setNotification("Revision completed! +20 Points added. Streak advanced!");
+    setNotification("Revision completed! +50 Points added. Streak advanced!");
 
-    // Clear revisions list or reset check status
     setRevisions((curr) => curr.map((r) => ({ ...r, checked: false })));
 
     setTimeout(() => {
@@ -271,40 +291,97 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
   }
 
   function handleDecayStreak() {
-    setTomeStreak(0);
+    decaySmartStreak();
     setNotification("Revision cycle missed. Tome Streak decayed back to 0.");
   }
 
   // Handlers - Exam Hub
-  function handleAddExam(e: FormEvent) {
+  function handleSaveExam(e: FormEvent) {
     e.preventDefault();
     if (!examTitle.trim()) return;
 
-    const newExam: ExamRecord = {
-      id: Date.now(),
-      title: examTitle,
-      isMain: examIsMain,
-      totalMarks,
-      gainedMarks,
-      date: examIsMain ? examDate : undefined,
-    };
+    const finalTotalMarks = totalMarks;
+    const finalGainedMarks = gainedMarks;
 
-    setExams((curr) => [...curr, newExam]);
+    const scorePct = finalTotalMarks > 0 ? Math.round((finalGainedMarks / finalTotalMarks) * 100) : 0;
+    if (scorePct > 80) {
+      triggerPeakMentalPower();
+    }
+
+    if (editingExamId !== null) {
+      // Edit mode
+      setExams((curr) =>
+        curr.map((item) =>
+          item.id === editingExamId
+            ? {
+                ...item,
+                title: examTitle,
+                isMain,
+                totalMarks: finalTotalMarks,
+                gainedMarks: finalGainedMarks,
+                date: examDate || undefined,
+              }
+            : item
+        )
+      );
+      setEditingExamId(null);
+      setNotification(`Exam '${examTitle}' updated successfully.`);
+    } else {
+      // Create mode
+      const newExam: ExamRecord = {
+        id: Date.now(),
+        title: examTitle,
+        isMain,
+        totalMarks: finalTotalMarks,
+        gainedMarks: finalGainedMarks,
+        date: examDate || undefined,
+      };
+
+      setExams((curr) => [...curr, newExam]);
+
+      // Award points based on performance in exams
+      const pointsEarned = Math.round(scorePct * 1.5);
+      awardPoints(pointsEarned, "Learning");
+
+      setNotification(`Exam '${examTitle}' registered. +${pointsEarned} XP awarded.`);
+    }
+
+    // Reset form states
     setExamTitle("");
-    setExamIsMain(false);
     setTotalMarks(100);
     setGainedMarks(80);
     setExamDate("");
-    setNotification(`Exam '${examTitle}' successfully registered.`);
+    setIsMain(false);
+  }
+
+  function handleStartEditExam(exam: ExamRecord) {
+    setEditingExamId(exam.id);
+    setExamTitle(exam.title);
+    setTotalMarks(exam.totalMarks);
+    setGainedMarks(exam.gainedMarks);
+    setExamDate(exam.date || "");
+    setIsMain(exam.isMain);
+    
+    // Scroll form into view
+    const formElement = document.getElementById("exam-record-form");
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }
 
   function handleDeleteExam(id: number) {
+    if (editingExamId === id) {
+      setEditingExamId(null);
+      setExamTitle("");
+      setTotalMarks(100);
+      setGainedMarks(80);
+      setExamDate("");
+    }
     setExams((curr) => curr.filter((e) => e.id !== id));
   }
 
   // Formatting Exam data for Recharts Line Chart
   const chartData = useMemo(() => {
-    // Sort normal & completed exams (where gained marks > 0 or it has historical records)
     return exams.map((e) => {
       const percentage = e.totalMarks > 0 ? Math.round((e.gainedMarks / e.totalMarks) * 100) : 0;
       return {
@@ -317,7 +394,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
     });
   }, [exams]);
 
-  // Recharts Custom Dot Renderer
   const renderCustomDot = (props: { cx?: number; cy?: number; payload?: { id?: number; isMain?: boolean } }) => {
     const { cx, cy, payload } = props;
     if (payload?.isMain) {
@@ -335,13 +411,28 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
 
   return (
     <section className="space-y-6 animate-fade-in-up relative">
+      <style>{`
+        @keyframes breathe-cyan {
+          0%, 100% {
+            border-color: rgba(6, 182, 212, 0.25);
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.1);
+          }
+          50% {
+            border-color: rgba(6, 182, 212, 0.85);
+            box-shadow: 0 0 24px rgba(6, 182, 212, 0.4);
+          }
+        }
+        .active-glow-aura {
+          animation: breathe-cyan 3.2s ease-in-out infinite;
+        }
+      `}</style>
       {/* 20-Point Splash Animation */}
       {showSplash && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md rounded-2xl animate-fade-in">
           <div className="text-center p-8 border border-indigo-500/30 rounded-3xl bg-indigo-950/20 shadow-[0_0_50px_rgba(99,102,241,0.2)] max-w-sm">
             <Award className="h-20 w-20 text-yellow-400 mx-auto animate-bounce" />
             <h2 className="text-3xl font-black text-white mt-4">Tome Mastered!</h2>
-            <p className="text-indigo-300 font-bold mt-2">+20 Experience Points</p>
+            <p className="text-indigo-300 font-bold mt-2">+50 Experience Points</p>
             <p className="text-xs text-slate-400 mt-1">Your scholar&apos;s revision streak has advanced.</p>
           </div>
         </div>
@@ -353,15 +444,14 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
-                <Image
-                  src="/assets/icons/learning.png"
-                  alt="Study module icon"
-                  width={44}
-                  height={44}
-                  className="h-11 w-11 object-contain"
-                />
-              </div>
+              
+              {/* Category icon wrapped in PowerUpBoost */}
+              <PowerUpBoost moduleKey="Learning">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.2)]">
+                  <Award className="h-11 w-11 text-[var(--rank-accent)] filter drop-shadow-[0_0_8px_rgba(34,211,238,0.6)] animate-pulse" />
+                </div>
+              </PowerUpBoost>
+
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
                   Learning Module
@@ -374,16 +464,8 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
 
             {/* Streak & notification badges */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5 bg-slate-950/60 border border-slate-800 rounded-full px-4 py-2">
-                <span className="text-xs font-bold text-slate-500">📚 Tome Streak:</span>
-                <span className="text-xs font-black text-white">{tomeStreak} Books</span>
-                <div className="flex gap-0.5 ml-1">
-                  {Array.from({ length: Math.min(6, tomeStreak) }).map((_, i) => (
-                    <BookOpen key={i} className="h-3.5 w-3.5 text-cyan-400 fill-cyan-400/10" />
-                  ))}
-                  {tomeStreak > 6 && <span className="text-[10px] text-slate-400 font-bold ml-0.5">+</span>}
-                </div>
-              </div>
+              {/* FireStreak Component */}
+              <FireStreak streakValue={smartStreak} streakType="Smart" />
 
               {notification && (
                 <span className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-sm font-semibold text-[var(--rank-accent)]">
@@ -396,23 +478,27 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
           {/* Sub-module View Toggles */}
           <div className="mt-6 inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1 w-fit">
             {[
-              { id: "table" as const, label: "📝 Study Table" },
-              { id: "vault" as const, label: "🔄 Revision Vault" },
-              { id: "hub" as const, label: "🎓 Exam Hub" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${
-                  activeTab === tab.id
-                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
-                    : "text-slate-400 hover:text-white"
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
+              { id: "table" as const, label: "Study Table", icon: Lamp },
+              { id: "vault" as const, label: "Revision Vault", icon: RotateCcw },
+              { id: "hub" as const, label: "Exam Hub", icon: GraduationCap },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${
+                    activeTab === tab.id
+                      ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -431,10 +517,33 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider">
-                    {nearestMainExam.daysLeft < 10 ? "🚨 Crimson Crisis Alert" : "Standard Blueprint"}
+                  <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                    {nearestMainExam.daysLeft < 10 ? (
+                      <>
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
+                        </span>
+                        Crimson Crisis Alert
+                      </>
+                    ) : (
+                      "Standard Blueprint"
+                    )}
                   </span>
-                  <Calendar className="h-4 w-4" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("hub");
+                        handleStartEditExam(nearestMainExam);
+                      }}
+                      className="p-1.5 rounded-lg border border-slate-800 bg-slate-955 text-slate-400 hover:text-indigo-400 transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                      title="Edit Main Exam"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                  </div>
                 </div>
                 <h3 className="mt-3 text-lg font-black text-white">{nearestMainExam.title}</h3>
                 <p className="mt-1 text-sm font-bold">
@@ -453,31 +562,29 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
         </div>
       </div>
 
-      {/* Main Workspace Body */}
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
+      {/* Main workspaces switcher viewport */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
         {/* SUB-MODULE A: STUDY TABLE */}
         {activeTab === "table" && (
-          <div className="space-y-6">
-            <div className="grid gap-5 md:grid-cols-[340px_1fr]">
-              {/* Study Logger Form */}
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
+              {/* Study Intake Log Form */}
               <form
-                onSubmit={handleAddSession}
                 className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5 flex flex-col justify-between"
+                onSubmit={handleAddSession}
               >
                 <div>
-                  <h3 className="text-lg font-black text-white flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-indigo-400" /> Study Logger
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">Log research and reading segments</p>
+                  <h3 className="text-lg font-black text-white">Log Study Session</h3>
+                  <p className="text-xs text-slate-450 mt-1">Configure subjects studied and duration logs</p>
 
                   <div className="mt-5 space-y-4">
                     <label className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-505">
                         Subject Name
                       </span>
                       <input
                         className={fieldClass}
-                        placeholder="e.g. Data Structures"
+                        placeholder="e.g. Advanced Operating Systems"
                         required
                         value={studySubject}
                         onChange={(e) => setStudySubject(e.target.value)}
@@ -492,7 +599,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                         <input
                           type="number"
                           min={0}
-                          max={24}
                           className={fieldClass}
                           value={studyHours}
                           onChange={(e) => setStudyHours(Number(e.target.value))}
@@ -500,7 +606,7 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                         />
                       </label>
                       <label className="flex flex-col gap-1.5">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-505">
                           Minutes
                         </span>
                         <input
@@ -548,10 +654,9 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                   <h3 className="text-lg font-black text-white">Time Log Dashboard</h3>
                   <p className="text-xs text-slate-400 mt-1">Study allocation metrics per weekday</p>
 
-                  {/* Horizontal Bar Chart (Custom CSS) */}
                   <div className="mt-6 space-y-4">
                     {dailyStudyStats.map((stat) => {
-                      const maxTarget = 8; // scale visual bar relative to 8 hours
+                      const maxTarget = 8;
                       const percentage = Math.min(100, (stat.hours / maxTarget) * 100);
                       return (
                         <div key={stat.day} className="group grid grid-cols-[80px_1fr_60px] items-center gap-3">
@@ -562,7 +667,7 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                               className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-[var(--rank-accent)] transition-all duration-500 group-hover:brightness-110 shadow-[0_0_10px_rgba(99,102,241,0.2)]"
                             />
                           </div>
-                          <span className="text-xs font-mono font-bold text-slate-300 text-right">
+                          <span className="text-xs font-mono font-bold text-slate-350 text-right">
                             {stat.label}
                           </span>
                         </div>
@@ -571,7 +676,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                   </div>
                 </div>
 
-                {/* Summary metrics row card */}
                 <div className="grid grid-cols-2 gap-4 mt-6 pt-5 border-t border-slate-800/80">
                   <div className="rounded-xl border border-slate-850 bg-slate-900/30 p-4">
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -593,7 +697,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
               </div>
             </div>
 
-            {/* Logged study sessions grid */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
               <h3 className="text-lg font-black text-white mb-4">Logged Study Ledger</h3>
               {sessions.length === 0 ? (
@@ -607,7 +710,7 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                     >
                       <div>
                         <h4 className="font-bold text-slate-100 truncate w-40">{s.subject}</h4>
-                        <p className="text-xs text-slate-500 mt-1">{s.day}</p>
+                        <p className="text-xs text-slate-505 mt-1">{s.day}</p>
                         <p className="text-xs font-mono font-bold text-[var(--rank-accent)] mt-1.5">
                           Duration: {s.hours}h {s.minutes}m
                         </p>
@@ -631,7 +734,6 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
         {/* SUB-MODULE B: REVISION VAULT */}
         {activeTab === "vault" && (
           <div className="space-y-6 animate-fade-in">
-            {/* Quick Append Action */}
             <form
               onSubmit={handleAddRevision}
               className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5"
@@ -657,13 +759,12 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
               </div>
             </form>
 
-            {/* Checklist Matrix */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5 border-b border-slate-800/80 pb-4">
                 <div>
                   <h3 className="text-xl font-black text-white">Active Recall Board</h3>
-                  <p className="text-xs text-slate-400">
-                    Complete all items to award +20 points and secure your Tome Streak
+                  <p className="text-xs text-slate-405">
+                    Complete all items to award +50 points and secure your Tome Streak
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -693,12 +794,15 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {revisions.map((rev) => (
-                    <div
+                    /* Checkbox Interaction: scale pulse and border glow on active recall cards */
+                    <motion.div
                       key={rev.id}
+                      animate={rev.checked ? { scale: [1, 1.05, 1] } : {}}
+                      transition={{ duration: 0.2 }}
                       className={`relative rounded-xl border p-4 transition-all duration-300 ${
                         rev.checked
-                          ? "border-emerald-500/30 bg-emerald-950/5 opacity-50"
-                          : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
+                          ? "border-emerald-500/30 bg-emerald-950/5 opacity-55 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                          : "border-slate-800 bg-slate-900/40 hover:border-slate-705"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -711,7 +815,7 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                           />
                         </label>
                         <span
-                          className={`text-sm font-bold truncate pr-6 text-slate-200 ${
+                          className={`text-sm font-bold truncate pr-6 text-slate-205 ${
                             rev.checked ? "line-through text-slate-500" : ""
                           }`}
                         >
@@ -725,7 +829,7 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
@@ -737,14 +841,20 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
         {activeTab === "hub" && (
           <div className="space-y-6 animate-fade-in">
             <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-              {/* Exam Register Intake Form */}
               <form
-                onSubmit={handleAddExam}
+                id="exam-record-form"
+                onSubmit={handleSaveExam}
                 className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5 flex flex-col justify-between"
               >
                 <div>
-                  <h3 className="text-lg font-black text-white">Register Exam Record</h3>
-                  <p className="text-xs text-slate-400 mt-1">Configure historical scores or countdown targets</p>
+                  <h3 className="text-lg font-black text-white">
+                    {editingExamId !== null ? "Edit Exam Record" : "Register Exam Record"}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {editingExamId !== null
+                      ? "Modify the fields below to update this exam's details"
+                      : "Configure historical scores or countdown targets"}
+                  </p>
 
                   <div className="mt-5 space-y-4">
                     <label className="flex flex-col gap-1.5">
@@ -760,197 +870,211 @@ export function LearningModule({ onAwardPoints }: LearningModuleProps) {
                       />
                     </label>
 
-                    {/* Classification Segmented Radio Buttons */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Exam Classification
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-550">
+                        Target Date (Optional for Quizzes)
                       </span>
-                      <div className="grid grid-cols-2 rounded-xl border border-slate-800 bg-slate-950/50 p-1">
-                        <button
-                          type="button"
-                          className={`rounded-lg py-2 text-xs font-bold transition-all ${
-                            !examIsMain
-                              ? "bg-[var(--rank-accent)]/15 text-white shadow-sm"
-                              : "text-slate-500 hover:text-slate-300"
-                          }`}
-                          onClick={() => setExamIsMain(false)}
-                        >
-                          Normal Exam
-                        </button>
-                        <button
-                          type="button"
-                          className={`rounded-lg py-2 text-xs font-bold transition-all ${
-                            examIsMain
-                              ? "bg-[var(--rank-accent)]/15 text-white shadow-sm"
-                              : "text-slate-500 hover:text-slate-300"
-                          }`}
-                          onClick={() => setExamIsMain(true)}
-                        >
-                          Main Exam
-                        </button>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          className={`${fieldClass} w-full pr-10`}
+                          value={examDate}
+                          onChange={(e) => setExamDate(e.target.value)}
+                        />
+                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                       </div>
-                    </div>
+                    </label>
+
+                    {/* Important Exam Checkbox Option */}
+                    <label className="flex items-center gap-2.5 cursor-pointer mt-1 bg-slate-900/30 border border-slate-850 p-3 rounded-xl transition-all duration-200 hover:border-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={isMain}
+                        onChange={(e) => setIsMain(e.target.checked)}
+                        className="h-4.5 w-4.5 rounded border-slate-750 bg-slate-950 text-indigo-600 focus:ring-indigo-500 accent-indigo-650"
+                      />
+                      <div className="text-left leading-none">
+                        <span className="text-xs font-black text-slate-205 block">IMPORTANT EXAM</span>
+                        <span className="text-[9px] text-slate-500 font-bold block mt-0.5">Flags with a purple border (Basic exams are yellow)</span>
+                      </div>
+                    </label>
 
                     <div className="grid grid-cols-2 gap-3">
                       <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                          Possible Marks
+                          Total Marks
                         </span>
                         <input
                           type="number"
                           min={1}
+                          required
                           className={fieldClass}
                           value={totalMarks}
                           onChange={(e) => setTotalMarks(Number(e.target.value))}
-                          required
                         />
                       </label>
                       <label className="flex flex-col gap-1.5">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-505">
                           Gained Marks
                         </span>
                         <input
                           type="number"
                           min={0}
+                          required
                           className={fieldClass}
                           value={gainedMarks}
                           onChange={(e) => setGainedMarks(Number(e.target.value))}
-                          required
                         />
                       </label>
                     </div>
-
-                    {/* Exam Date (Disabled for Normal, Mandatory for Main) */}
-                    <label className="flex flex-col gap-1.5">
-                      <span
-                        className={`text-xs font-bold uppercase tracking-wider ${
-                          examIsMain ? "text-slate-500" : "text-slate-700"
-                        }`}
-                      >
-                        Exam Target Date {examIsMain ? "(Mandatory)" : "(Not Applicable)"}
-                      </span>
-                      <input
-                        type="date"
-                        className={`${fieldClass} disabled:opacity-30 disabled:cursor-not-allowed`}
-                        value={examDate}
-                        onChange={(e) => setExamDate(e.target.value)}
-                        disabled={!examIsMain}
-                        required={examIsMain}
-                      />
-                    </label>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  className="mt-6 w-full rounded-xl bg-indigo-650 py-3 text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-600 transition-colors cursor-pointer active:scale-95 transition-transform"
-                >
-                  Save Exam Data
-                </button>
+                <div className="flex flex-col gap-2 mt-6">
+                  <button
+                    type="submit"
+                    className="w-full rounded-xl bg-indigo-650 hover:bg-indigo-600 py-3 text-xs font-black uppercase tracking-wider text-white transition-colors cursor-pointer active:scale-[0.97]"
+                  >
+                    {editingExamId !== null ? "Update Exam Record" : "Register Exam"}
+                  </button>
+                  {editingExamId !== null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingExamId(null);
+                        setExamTitle("");
+                        setTotalMarks(100);
+                        setGainedMarks(80);
+                        setExamDate("");
+                        setIsMain(false);
+                      }}
+                      className="w-full rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-900 py-3 text-xs font-black uppercase tracking-wider text-slate-300 transition-colors cursor-pointer active:scale-[0.97]"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
               </form>
 
-              {/* Line Chart Analytics */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5 flex flex-col justify-between h-[450px] lg:h-auto">
-                <div>
-                  <h3 className="text-lg font-black text-white">Grade Performance Trajectory</h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Comparison scorecard line showing glowing Main Exam milestone markers
-                  </p>
-                </div>
+              {/* Score trajectory graph */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                <h3 className="text-lg font-black text-white">Score Trajectory Graph</h3>
+                <p className="text-xs text-slate-400 mt-1">Visual progression path for historical quiz and exam markings</p>
 
-                {chartData.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
-                    Register exam records on the left to plot the trend line trajectory.
-                  </div>
-                ) : (
-                  <div className="flex-1 w-full mt-4 min-h-[220px]">
+                <div className="h-72 mt-6">
+                  {chartData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-slate-500 text-sm italic">
+                      No scored records found. Register an exam to display score path.
+                    </div>
+                  ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 15, right: 15, left: -25, bottom: 5 }}>
-                        <XAxis
-                          dataKey="name"
-                          stroke="#475569"
-                          fontSize={10}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <YAxis
-                          domain={[0, 100]}
-                          stroke="#475569"
-                          fontSize={10}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(val) => `${val}%`}
-                        />
+                      <LineChart data={chartData} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b50" />
+                        <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} />
                         <Tooltip
-                          contentStyle={{
-                            backgroundColor: "#070814",
-                            border: "1px solid #1e293b",
-                            borderRadius: "12px",
-                            fontSize: "12px",
-                          }}
-                          formatter={(value, name, props) => [
-                            props.payload.tooltipLabel,
-                            "Score Details",
-                          ]}
-                          labelFormatter={() => ""}
+                          contentStyle={{ backgroundColor: "#070a13", borderColor: "#1e293b", borderRadius: "12px", fontSize: "11px" }}
+                          itemStyle={{ color: "#f8fafc" }}
                         />
                         <Line
                           type="monotone"
                           dataKey="percentage"
                           stroke="var(--rank-accent)"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           dot={renderCustomDot}
-                          activeDot={{ r: 6 }}
+                          activeDot={{ r: 7 }}
                         />
                       </LineChart>
                     </ResponsiveContainer>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Registered Exams Ledger List */}
+            {/* Scored ledger tables */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-              <h3 className="text-lg font-black text-white mb-4">Exam History Database</h3>
+              <h3 className="text-lg font-black text-white mb-4">Historical Records Ledger</h3>
               {exams.length === 0 ? (
-                <p className="text-sm text-slate-500">No exams registered.</p>
+                <p className="text-sm text-slate-500">No exams registered yet.</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {exams.map((exam) => {
-                    const percentage = Math.round((exam.gainedMarks / exam.totalMarks) * 100);
+                  {exams.map((e) => {
+                    const percentage = e.totalMarks > 0 ? Math.round((e.gainedMarks / e.totalMarks) * 100) : 0;
+                    const isUpcomingMain = (() => {
+                      if (!e.isMain || !e.date) return false;
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const examD = new Date(e.date);
+                      examD.setHours(0, 0, 0, 0);
+                      return examD >= today;
+                    })();
+
                     return (
                       <div
-                        key={exam.id}
-                        className={`rounded-xl border p-4 flex items-center justify-between ${
-                          exam.isMain ? "border-rose-500/20 bg-rose-950/5" : "border-slate-800 bg-slate-900/40"
+                        key={e.id}
+                        className={`rounded-xl border p-4 flex items-center justify-between transition-all duration-300 ${
+                          e.isMain
+                            ? isUpcomingMain
+                              ? "border-purple-500 bg-purple-950/25 shadow-[0_0_15px_rgba(168,85,247,0.22)] animate-pulse"
+                              : "border-purple-500/30 bg-purple-950/5 hover:border-purple-500/50 hover:shadow-[0_0_15px_rgba(168,85,247,0.06)]"
+                            : "border-amber-500/25 bg-amber-950/5 hover:border-amber-500/45 hover:shadow-[0_0_15px_rgba(245,158,11,0.06)]"
                         }`}
                       >
                         <div>
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-slate-100 truncate w-32" title={exam.title}>
-                              {exam.title}
-                            </h4>
-                            {exam.isMain && (
-                              <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-[8px] font-black text-rose-400 border border-rose-500/20 uppercase">
-                                Main
-                              </span>
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded flex items-center gap-1 w-fit transition-all duration-300 ${
+                            e.isMain
+                              ? isUpcomingMain
+                                ? "bg-purple-500/25 text-purple-300 border border-purple-500/35 shadow-[0_0_10px_rgba(168,85,247,0.45)]"
+                                : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                              : "bg-amber-500/10 text-amber-450 border border-amber-500/20"
+                          }`}>
+                            {e.isMain ? (
+                              <>
+                                <Calendar className="h-2.5 w-2.5" />
+                                <span>Important Exam</span>
+                              </>
+                            ) : (
+                              <span>Basic Exam</span>
                             )}
-                          </div>
-                          <p className="text-xs font-mono font-bold text-indigo-400 mt-1.5">
-                            Score: {exam.gainedMarks} / {exam.totalMarks} ({percentage}%)
-                          </p>
-                          {exam.date && (
-                            <p className="text-[10px] text-slate-500 mt-1">Date: {exam.date}</p>
+                          </span>
+                          <h4 className="font-bold text-slate-100 mt-2 truncate w-40" title={e.title}>
+                            {e.title}
+                          </h4>
+                          {e.date && <p className="text-[10px] text-slate-500 mt-0.5">Date: {e.date}</p>}
+                          {isUpcomingMain ? (
+                            <p className="text-xs font-bold text-purple-400 mt-2 flex items-center gap-1">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-450 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500"></span>
+                              </span>
+                              Scheduled
+                            </p>
+                          ) : (
+                            <p className="text-xs font-mono font-black text-slate-300 mt-2">
+                              Score: <span className={percentage >= 80 ? "text-emerald-400" : percentage >= 50 ? "text-amber-450" : "text-rose-450"}>
+                                {e.gainedMarks}/{e.totalMarks} ({percentage}%)
+                              </span>
+                            </p>
                           )}
                         </div>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-slate-800 bg-slate-950 p-2 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                          onClick={() => handleDeleteExam(exam.id)}
-                          aria-label="Delete exam record"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            type="button"
+                            className="rounded-lg border border-slate-800 bg-slate-950 p-2 text-slate-400 hover:text-indigo-400 transition-colors cursor-pointer"
+                            onClick={() => handleStartEditExam(e)}
+                            aria-label={`Edit exam record`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-lg border border-slate-800 bg-slate-955 p-2 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            onClick={() => handleDeleteExam(e.id)}
+                            aria-label={`Delete exam record`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

@@ -2,7 +2,11 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { Droplet, Plus, Minus, Trash2, PlusCircle, Apple } from "lucide-react";
+import { Droplet, Plus, Minus, Trash2, PlusCircle, Apple, UtensilsCrossed, HandPlatter, ChefHat, Zap, Flame, Leaf } from "lucide-react";
+import { motion } from "framer-motion";
+import { useNectStore } from "../store/useNectStore";
+import { FireStreak } from "./FireStreak";
+import { PowerUpBoost } from "./PowerUpBoost";
 
 type ServingUnitType = "Grams" | "Bowls" | "Whole Fruit" | "Milliliters" | "Scoops";
 
@@ -47,7 +51,7 @@ const initialCustomFoods: CustomFoodItem[] = [
     id: 3,
     name: "Chicken Breast",
     servingUnit: "Grams",
-    calories: 1.65, // per 1 gram
+    calories: 1.65,
     protein: 0.31,
     fiber: 0,
   },
@@ -108,15 +112,26 @@ export function FoodModule({
   const [water, setWater] = useState(0);
   const [notification, setNotification] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [dayCompleted, setDayCompleted] = useState(false);
+
+  // Zustand state
+  const {
+    healthyStreak,
+    incrementHealthyStreak,
+    decayHealthyStreak,
+    awardPoints,
+  } = useNectStore();
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const storedPlate = localStorage.getItem("nect_food_plate_items");
       const storedCustom = localStorage.getItem("nect_food_custom_foods");
       const storedWater = localStorage.getItem("nect_food_water");
+      const storedCompleted = localStorage.getItem("nect_food_day_completed");
       if (storedPlate) setPlateItems(JSON.parse(storedPlate));
       if (storedCustom) setCustomFoods(JSON.parse(storedCustom));
       if (storedWater) setWater(Number(storedWater));
+      if (storedCompleted) setDayCompleted(JSON.parse(storedCompleted));
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
@@ -137,6 +152,11 @@ export function FoodModule({
     localStorage.setItem("nect_food_water", String(water));
   }, [water, isLoaded]);
 
+  useEffect(() => {
+    if (!isLoaded) return;
+    localStorage.setItem("nect_food_day_completed", JSON.stringify(dayCompleted));
+  }, [dayCompleted, isLoaded]);
+
   // Form states for log today's intake
   const [selectedFoodId, setSelectedFoodId] = useState<number>(1);
   const [logQuantity, setLogQuantity] = useState<number>(1);
@@ -152,7 +172,6 @@ export function FoodModule({
   const [internalWeight, setInternalWeight] = useState(75);
   const [internalHeight, setInternalHeight] = useState(180);
 
-  // Determine weight/height to use based on module enablement
   const weight = workoutEnabled && propWeight !== undefined ? propWeight : internalWeight;
   const setWeight = workoutEnabled && propSetWeight !== undefined ? propSetWeight : setInternalWeight;
   const height = workoutEnabled && propHeight !== undefined ? propHeight : internalHeight;
@@ -163,12 +182,10 @@ export function FoodModule({
   const proteinTarget = useMemo(() => Math.round(weight * 2.0), [weight]);
   const fiberTarget = useMemo(() => Math.round(height / 7), [height]);
 
-  // Selected food item in the dropdown
   const selectedFoodItem = useMemo(() => {
     return customFoods.find((f) => f.id === selectedFoodId) || customFoods[0];
   }, [customFoods, selectedFoodId]);
 
-  // Keep dropdown selection valid when customFoods changes
   useEffect(() => {
     if (customFoods.length > 0 && !customFoods.some((f) => f.id === selectedFoodId)) {
       const timer = setTimeout(() => {
@@ -178,7 +195,7 @@ export function FoodModule({
     }
   }, [customFoods, selectedFoodId]);
 
-  // Calculations for current consumed totals from checklist checked items
+  // Calculations for current consumed totals
   const totals = useMemo(() => {
     return plateItems.reduce(
       (acc, item) => {
@@ -197,6 +214,7 @@ export function FoodModule({
   const bmiMeta = getBmiMeta(bmi);
 
   const isWaterGoalMet = water >= 3.0;
+  const allTargetsMet = totals.calories >= caloriesTarget && totals.protein >= proteinTarget && totals.fiber >= fiberTarget;
 
   // Handlers
   function handleAddCustomFood(event: FormEvent<HTMLFormElement>) {
@@ -241,39 +259,70 @@ export function FoodModule({
       calories: selectedFoodItem.calories,
       protein: selectedFoodItem.protein,
       fiber: selectedFoodItem.fiber,
-      checked: true, // starts checked by default for immediate logging feedback, user can toggle
+      checked: true,
     };
 
     setPlateItems((current) => [...current, newItem]);
     setLogQuantity(1);
-    setNotification(`${logQuantity} ${selectedFoodItem.servingUnit} of ${selectedFoodItem.name} logged.`);
+    
+    // Award 15 XP for logging a plate item
+    awardPoints(15, "Food");
+    setNotification(`${logQuantity} ${selectedFoodItem.servingUnit} of ${selectedFoodItem.name} logged. +15 XP awarded.`);
   }
 
   function handleTogglePlateItem(id: number) {
+    let wasChecked = false;
+    plateItems.forEach((item) => {
+      if (item.id === id) wasChecked = item.checked;
+    });
+
     setPlateItems((current) =>
       current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     );
+
+    // Award +10 XP for checking off meals eaten
+    if (!wasChecked) {
+      awardPoints(10, "Food");
+    }
   }
 
   function handleDeletePlateItem(id: number) {
     setPlateItems((current) => current.filter((item) => item.id !== id));
   }
 
+  function handleCompleteNutritionDay() {
+    if (dayCompleted) return;
+    setDayCompleted(true);
+    incrementHealthyStreak();
+    awardPoints(150, "Food");
+    setNotification("Complete Nutrition Day recorded! Streak advanced & +150 XP awarded.");
+  }
+
+  function handleDecayStreak() {
+    decayHealthyStreak();
+    setDayCompleted(false);
+    setNotification("Nutrition goals missed. Healthy Streak decayed back to 0.");
+  }
+
   return (
     <section className="space-y-6 animate-fade-in-up">
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        {/* Dynamic target tag & header */}
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
+      {/* Dynamic target tag & header */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
-              <Image
-                src="/assets/icons/food.png"
-                alt="Food module icon"
-                width={44}
-                height={44}
-                className="h-11 w-11 object-contain"
-              />
-            </div>
+            
+            {/* Category Icon wrapped in PowerUpBoost */}
+            <PowerUpBoost moduleKey="Food">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
+                <Image
+                  src="/assets/icons/food.png"
+                  alt="Food module icon"
+                  width={44}
+                  height={44}
+                  className="h-11 w-11 object-contain"
+                />
+              </div>
+            </PowerUpBoost>
+
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
                 Food Module
@@ -285,12 +334,16 @@ export function FoodModule({
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
+            {/* FireStreak Component */}
+            <FireStreak streakValue={healthyStreak} streakType="Healthy" />
+
             <div className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_20px_rgba(34,211,238,0.1)]">
               <span className="text-[var(--rank-accent)] font-bold">TARGETS:</span>{" "}
-              {caloriesTarget} kcal <span className="text-slate-600">|</span> {proteinTarget}g Protein <span className="text-slate-600">|</span> {fiberTarget}g Fiber
+              {caloriesTarget} kcal <span className="text-slate-650">|</span> {proteinTarget}g Protein <span className="text-slate-650">|</span> {fiberTarget}g Fiber
             </div>
+
             {notification && (
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 animate-pulse">
                 {notification}
               </span>
             )}
@@ -298,34 +351,26 @@ export function FoodModule({
 
           <div className="mt-6 inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
             {[
-              { id: "plate" as const, label: "Today's Plate" },
-              { id: "custom" as const, label: "Custom Food" },
-            ].map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeView === view.id
-                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
-                    : "text-slate-400 hover:text-white"
-                  }`}
-                onClick={() => setActiveView(view.id)}
-              >
-                {view.label}
-              </button>
-            ))}
+              { id: "plate" as const, label: "Today's Plate", icon: HandPlatter },
+              { id: "custom" as const, label: "Custom Food", icon: ChefHat },
+            ].map((view) => {
+              const Icon = view.icon;
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeView === view.id
+                      ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                      : "text-slate-400 hover:text-white"
+                    }`}
+                  onClick={() => setActiveView(view.id)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{view.label}</span>
+                </button>
+              );
+            })}
           </div>
-        </div>
-
-        {/* Health telemetry card */}
-        <HealthTelemetry
-          bmi={bmi}
-          bmiMeta={bmiMeta}
-          height={height}
-          setHeight={setHeight}
-          setWeight={setWeight}
-          weight={weight}
-          workoutEnabled={workoutEnabled}
-        />
       </div>
 
       {/* Main workspace container */}
@@ -347,7 +392,7 @@ export function FoodModule({
                   </div>
                   <div>
                     <h3 className="font-bold text-white">Water Hydration Engine</h3>
-                    <p className="text-xs text-slate-400">Target: 3.0 Liters</p>
+                    <p className="text-xs text-slate-405">Target: 3.0 Liters</p>
                   </div>
                 </div>
 
@@ -456,12 +501,12 @@ export function FoodModule({
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs font-bold">
+                <div className="flex flex-wrap gap-2 text-xs font-bold items-center">
                   <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
                     Cal:{" "}
                     <span
                       className={
-                        totals.calories >= caloriesTarget ? "text-emerald-400" : "text-cyan-400"
+                        totals.calories >= caloriesTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
                       }
                     >
                       {totals.calories}
@@ -472,7 +517,7 @@ export function FoodModule({
                     Pro:{" "}
                     <span
                       className={
-                        totals.protein >= proteinTarget ? "text-emerald-400" : "text-cyan-400"
+                        totals.protein >= proteinTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
                       }
                     >
                       {totals.protein}g
@@ -482,12 +527,36 @@ export function FoodModule({
                   <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
                     Fib:{" "}
                     <span
-                      className={totals.fiber >= fiberTarget ? "text-emerald-400" : "text-cyan-400"}
+                      className={totals.fiber >= fiberTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"}
                     >
                       {totals.fiber.toFixed(1)}g
                     </span>{" "}
                     / {fiberTarget}g
                   </span>
+
+                  {/* Complete Day action buttons */}
+                  <button
+                    type="button"
+                    className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                    onClick={handleDecayStreak}
+                  >
+                    Simulate Missed Day
+                  </button>
+
+                  {allTargetsMet && (
+                    <button
+                      type="button"
+                      disabled={dayCompleted}
+                      className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${
+                        dayCompleted
+                          ? "bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none"
+                          : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"
+                      }`}
+                      onClick={handleCompleteNutritionDay}
+                    >
+                      {dayCompleted ? "✓ Day Recorded" : "Complete Nutrition Day"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -500,7 +569,7 @@ export function FoodModule({
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-left">
                     <thead>
-                      <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-505">
                         <th className="py-3 px-4 w-12 text-center">Status</th>
                         <th className="py-3 px-4">Food Item</th>
                         <th className="py-3 px-4">Quantity / Serving</th>
@@ -519,41 +588,46 @@ export function FoodModule({
                         return (
                           <tr
                             key={item.id}
-                            className={`transition-all duration-300 ${item.checked ? "opacity-40 bg-slate-950/5" : "hover:bg-slate-950/15"
+                            className={`transition-all duration-300 ${item.checked ? "opacity-45 bg-slate-950/5" : "hover:bg-slate-950/15"
                               }`}
                           >
                             <td className="py-3 px-4 text-center">
-                              <label className="inline-flex cursor-pointer items-center justify-center w-5 h-5 rounded border border-slate-700 bg-slate-900 transition-transform active:scale-95">
+                              {/* Checkbox Interaction: scale pulse on checklist checkboxes */}
+                              <motion.label
+                                animate={item.checked ? { scale: [1, 1.2, 1] } : {}}
+                                transition={{ duration: 0.2 }}
+                                className="inline-flex cursor-pointer items-center justify-center w-5 h-5 rounded border border-slate-700 bg-slate-900 transition-transform active:scale-95"
+                              >
                                 <input
                                   type="checkbox"
                                   checked={item.checked}
                                   onChange={() => handleTogglePlateItem(item.id)}
                                   className="h-3.5 w-3.5 accent-[var(--rank-accent)]"
                                 />
-                              </label>
+                              </motion.label>
                             </td>
                             <td className="py-3 px-4 font-bold text-slate-200">
-                              <span className={item.checked ? "line-through text-slate-500" : ""}>
+                              <span className={item.checked ? "line-through text-slate-505" : ""}>
                                 {item.name}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-slate-400 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-500" : ""}>
+                              <span className={item.checked ? "line-through text-slate-505" : ""}>
                                 {item.quantity} {item.servingUnit}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-500" : ""}>
+                              <span className={item.checked ? "line-through text-slate-550" : ""}>
                                 {itemCalories} kcal
                               </span>
                             </td>
                             <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-500" : ""}>
+                              <span className={item.checked ? "line-through text-slate-550" : ""}>
                                 {itemProtein}g
                               </span>
                             </td>
                             <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-500" : ""}>
+                              <span className={item.checked ? "line-through text-slate-550" : ""}>
                                 {itemFiber}g
                               </span>
                             </td>
@@ -687,7 +761,10 @@ export function FoodModule({
 
             {/* Saved Kitchen Dictionary */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-              <h2 className="text-xl font-black text-white mb-4">🍏 Saved Kitchen Dictionary</h2>
+              <h2 className="text-xl font-black text-white mb-4 flex items-center gap-2">
+                <UtensilsCrossed className="h-5 w-5 text-emerald-400" />
+                Saved Kitchen Dictionary
+              </h2>
               {customFoods.length === 0 ? (
                 <p className="text-sm text-slate-500">No custom foods configured.</p>
               ) : (
@@ -695,7 +772,7 @@ export function FoodModule({
                   {customFoods.map((food) => (
                     <div
                       key={food.id}
-                      className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-4"
+                      className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-4 animate-fade-in"
                     >
                       <div>
                         <h3 className="font-bold text-white truncate pr-6">{food.name}</h3>
@@ -712,7 +789,7 @@ export function FoodModule({
 
                       <button
                         type="button"
-                        className="absolute top-4 right-4 rounded-lg border border-slate-800 bg-slate-950 p-2 text-slate-400 transition-transform duration-100 hover:text-rose-400 active:scale-95 cursor-pointer"
+                        className="absolute top-4 right-4 rounded-lg border border-slate-800 bg-slate-950 p-2 text-slate-400 transition-transform duration-100 hover:text-rose-450 active:scale-95 cursor-pointer"
                         onClick={() => handleDeleteCustomFood(food.id)}
                         aria-label={`Delete ${food.name}`}
                       >

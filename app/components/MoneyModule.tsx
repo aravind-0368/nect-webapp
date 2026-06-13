@@ -2,18 +2,24 @@
 
 import { useState, useEffect, useMemo, FormEvent } from "react";
 import Image from "next/image";
-import { 
-  Wallet, 
-  Plus, 
-  Trash2, 
-  PlusCircle, 
-  AlertTriangle, 
-  Check, 
-  X, 
-  Calendar, 
-  TrendingUp, 
-  TrendingDown, 
-  AlertCircle
+import { useNectStore } from "../store/useNectStore";
+import {
+  Wallet,
+  Plus,
+  Trash2,
+  PlusCircle,
+  AlertTriangle,
+  Check,
+  X,
+  Calendar,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  History,
+  FileText,
+  ArrowUp,
+  ArrowDown,
+  Sliders
 } from "lucide-react";
 
 type TransactionType = "income" | "expense";
@@ -42,9 +48,7 @@ interface RecurringRule {
   dayOfMonth: number;
 }
 
-interface MoneyModuleProps {
-  autoApproveTransactions: boolean;
-}
+
 
 const defaultCategories: Category[] = [
   { name: "Salary", color: "#10b981", monthlyLimit: null }, // Emerald
@@ -134,7 +138,8 @@ const colorPalette = [
   { name: "Slate", hex: "#64748b" },
 ];
 
-export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
+export function MoneyModule() {
+  const { autoApproveTransactions } = useNectStore();
   // --- STATE ---
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [initialBalance, setInitialBalance] = useState<number>(0);
@@ -155,6 +160,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
 
   // Category Popover State
   const [showCategoryCreator, setShowCategoryCreator] = useState<boolean>(false);
+  const [showLimitManager, setShowLimitManager] = useState<boolean>(false);
   const [newCatName, setNewCatName] = useState<string>("");
   const [newCatColor, setNewCatColor] = useState<string>("#ef4444");
   const [newCatLimit, setNewCatLimit] = useState<string>("");
@@ -200,10 +206,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
       const storedInitialized = localStorage.getItem("nect_money_initialized");
       if (storedInitialized === "true") {
         setIsInitialized(true);
-        
+
         const balanceVal = Number(localStorage.getItem("nect_money_initial_balance") || "0");
         setInitialBalance(balanceVal);
-        
+
         let loadedTx: Transaction[] = [];
         const storedTx = localStorage.getItem("nect_money_transactions");
         if (storedTx) loadedTx = JSON.parse(storedTx);
@@ -213,7 +219,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
         const storedCat = localStorage.getItem("nect_money_categories");
         if (storedCat) loadedCat = JSON.parse(storedCat);
         setCategories(loadedCat);
-        
+
         let loadedRec = defaultRecurringRules;
         const storedRec = localStorage.getItem("nect_money_recurring_rules");
         if (storedRec) loadedRec = JSON.parse(storedRec);
@@ -246,7 +252,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
           if (pending.length > 0) {
             const newTxList = [...loadedTx];
             const newProcessed = [...loadedProcessed];
-            
+
             pending.forEach((rule) => {
               const processKey = `${rule.id}-${monthKey}`;
               const dateString = `${monthKey}-${String(rule.dayOfMonth).padStart(2, "0")}`;
@@ -264,10 +270,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
 
             loadedTx = newTxList;
             loadedProcessed = newProcessed;
-            
+
             localStorage.setItem("nect_money_transactions", JSON.stringify(newTxList));
             localStorage.setItem("nect_money_processed_recurring", JSON.stringify(newProcessed));
-            
+
             setNotification(`Auto-processed ${pending.length} recurring transaction(s).`);
           }
         }
@@ -367,11 +373,11 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
       alert("Please enter a valid initial balance.");
       return;
     }
-    
+
     setIsInitialized(true);
     setInitialBalance(balance);
     setTransactions(defaultTransactions);
-    
+
     saveState(true, balance, defaultTransactions, categories, recurringRules, processedRecurring);
     showTempNotification("Finance ledger successfully initialized!");
   };
@@ -404,7 +410,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
     setTransactions(updatedTxs);
     setTxName("");
     setTxAmount("");
-    
+
     saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, processedRecurring);
     showTempNotification(`Logged: ${txType === "income" ? "+" : "-"}${currencySymbol}${amount} for ${newTx.name}`);
   };
@@ -413,7 +419,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
     const target = transactions.find((t) => t.id === id);
     const updatedTxs = transactions.filter((t) => t.id !== id);
     setTransactions(updatedTxs);
-    
+
     saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, processedRecurring);
     if (target) {
       showTempNotification(`Deleted: ${target.name}`);
@@ -424,7 +430,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
     e.preventDefault();
     const name = newCatName.trim();
     if (!name) return;
-    
+
     if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
       alert("A category with this name already exists.");
       return;
@@ -443,7 +449,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
     setNewCatName("");
     setNewCatLimit("");
     setShowCategoryCreator(false);
-    
+
     setTxCategory(name);
     setNewRecCategory(name);
 
@@ -548,7 +554,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
       localStorage.removeItem("nect_money_categories");
       localStorage.removeItem("nect_money_recurring_rules");
       localStorage.removeItem("nect_money_processed_recurring");
-      
+
       setIsInitialized(false);
       setInitialBalance(0);
       setTransactions([]);
@@ -591,15 +597,15 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                   className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-4 px-5 text-lg font-black text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-605 focus:border-[var(--rank-accent)] focus:ring-2 focus:ring-[var(--rank-accent)]/20"
                 />
                 <div className="absolute right-4 text-xs font-bold text-slate-505 flex gap-2">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => handleCurrencyChange("USD")}
                     className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "USD" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
                   >
                     USD ($)
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => handleCurrencyChange("INR")}
                     className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "INR" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
                   >
@@ -626,7 +632,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
     <section className="space-y-6 animate-fade-in-up">
       {/* Top Banner Row */}
       <div className="relative grid gap-5 lg:grid-cols-[1fr_360px] items-center">
-        
+
         {/* Top-Left: Module Title & Center Net Liquidity Block */}
         <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm w-full">
           <div className="flex items-center gap-4">
@@ -688,11 +694,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
         </div>
 
         {/* Top-Right: Monthly Net Yield Pill */}
-        <div className={`rounded-2xl border p-6 text-center backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex flex-col justify-center min-h-[106px] transition-all duration-350 ${
-          monthlyNetYield >= 0 
-            ? "border-emerald-500/20 bg-emerald-500/5" 
+        <div className={`rounded-2xl border p-6 text-center backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex flex-col justify-center min-h-[106px] transition-all duration-350 ${monthlyNetYield >= 0
+            ? "border-emerald-500/20 bg-emerald-500/5"
             : "border-rose-500/20 bg-rose-500/5"
-        }`}>
+          }`}>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
             Monthly Net Yield
           </p>
@@ -702,11 +707,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
             ) : (
               <TrendingDown className="h-5 w-5 text-rose-400" />
             )}
-            <span className={`rounded-full px-4 py-1.5 text-lg font-black tracking-wide ${
-              monthlyNetYield >= 0 
-                ? "text-emerald-400 bg-emerald-500/10" 
+            <span className={`rounded-full px-4 py-1.5 text-lg font-black tracking-wide ${monthlyNetYield >= 0
+                ? "text-emerald-400 bg-emerald-500/10"
                 : "text-rose-400 bg-rose-500/10"
-            }`}>
+              }`}>
               {monthlyNetYield >= 0 ? "+" : ""}{currencySymbol}{monthlyNetYield.toLocaleString()}
             </span>
           </div>
@@ -761,44 +765,57 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
 
       {/* Main Grid: Form Engine + Roster Manager */}
       <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
-        
+
         {/* Core Transaction Engine Panel */}
-        <div className="rounded-2xl border border-slate-800/85 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-between relative">
+        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-between relative transition-all duration-550 ${
+          txType === "income"
+            ? "border-emerald-500/30 bg-emerald-950/2 shadow-[0_0_30px_rgba(16,185,129,0.08)]"
+            : "border-rose-500/30 bg-rose-950/2 shadow-[0_0_30px_rgba(239,68,68,0.08)]"
+        }`}>
           <div>
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
-                  <PlusCircle className="h-5 w-5 text-[var(--rank-accent)]" />
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl border bg-slate-950/50 transition-colors duration-500 ${
+                  txType === "income" ? "border-emerald-500/30 text-emerald-400" : "border-rose-500/30 text-rose-400"
+                }`}>
+                  <FileText className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-lg tracking-wide">➕ LOG TRANSACTION</h3>
+                  <h3 className="font-black text-white text-lg tracking-wide">LOG TRANSACTION</h3>
                   <p className="text-xs text-slate-400">Instantly record earnings or expenditures</p>
                 </div>
               </div>
 
               {/* Transaction Type Toggle Button row */}
-              <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950/60 p-0.5">
+              <div className="relative inline-flex rounded-xl border border-slate-800 bg-slate-950/60 p-0.5 w-[220px] h-[36px] overflow-hidden">
+                {/* Active sliding pill */}
+                <div
+                  className={`absolute top-0.5 bottom-0.5 left-0.5 w-[106px] rounded-lg transition-all duration-300 ease-out ${
+                    txType === "income"
+                      ? "transform translate-x-0 bg-emerald-500/15 border border-emerald-500/25 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                      : "transform translate-x-[108px] bg-rose-500/15 border border-rose-500/25 shadow-[0_0_12px_rgba(239,68,68,0.15)]"
+                  }`}
+                />
+
                 <button
                   type="button"
                   onClick={() => setTxType("income")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
-                    txType === "income" 
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                      : "text-slate-450 hover:text-slate-200"
+                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                    txType === "income" ? "text-emerald-400 font-black" : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  [ + Income ]
+                  <ArrowUp className={`h-3.5 w-3.5 transition-transform duration-300 ${txType === "income" ? "scale-110" : ""}`} />
+                  <span>Income</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setTxType("expense")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${
-                    txType === "expense" 
-                      ? "bg-rose-500/15 text-rose-400 border border-rose-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-                      : "text-slate-450 hover:text-slate-200"
+                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
+                    txType === "expense" ? "text-rose-400 font-black" : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  [ - Expense ]
+                  <ArrowDown className={`h-3.5 w-3.5 transition-transform duration-300 ${txType === "expense" ? "scale-110" : ""}`} />
+                  <span>Expense</span>
                 </button>
               </div>
             </div>
@@ -833,11 +850,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                     required
                     value={txAmount}
                     onChange={(e) => setTxAmount(e.target.value)}
-                    className={`rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 ${
-                      txType === "income"
+                    className={`rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 ${txType === "income"
                         ? "focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25"
                         : "focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25"
-                    }`}
+                      }`}
                   />
                 </div>
               </div>
@@ -855,9 +871,21 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                   >
                     {categories.map((c) => {
                       const limitStatus = checkCategoryThreshold(c.name);
+                      const hasLimit = c.monthlyLimit !== null;
+                      const percent = Math.round(limitStatus.percent);
+                      let bullet = "🟢";
+                      if (hasLimit) {
+                        if (percent >= 80) {
+                          bullet = "🔴";
+                        } else if (percent >= 60) {
+                          bullet = "🟡";
+                        }
+                      }
+                      const limitText = hasLimit ? ` (${percent}%)` : "";
+                      const overLimitText = percent > 100 ? " [OVER LIMIT]" : "";
                       return (
                         <option key={c.name} value={c.name}>
-                          {c.name} {limitStatus.exceeded ? "⚠️ (Budget Threshold Exceeded)" : ""}
+                          {bullet} {c.name}{limitText}{overLimitText}
                         </option>
                       );
                     })}
@@ -865,17 +893,49 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
 
                   <button
                     type="button"
-                    onClick={() => setShowCategoryCreator(!showCategoryCreator)}
-                    className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-xl border transition-all active:scale-95 duration-100 cursor-pointer ${
-                      showCategoryCreator
+                    onClick={() => {
+                      setShowCategoryCreator(!showCategoryCreator);
+                    }}
+                    className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-xl border transition-all active:scale-95 duration-100 cursor-pointer ${showCategoryCreator
                         ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
                         : "border-slate-700 bg-slate-950/70 text-slate-400 hover:text-white"
-                    }`}
+                      }`}
                     title="Create custom category"
                   >
                     <Plus className="h-5 w-5" />
                   </button>
                 </div>
+
+                {(() => {
+                  const limitStatus = checkCategoryThreshold(activeTxCategory);
+                  const cat = categories.find((c) => c.name === activeTxCategory);
+                  if (!cat || cat.monthlyLimit === null) return null;
+                  
+                  const percent = Math.round(limitStatus.percent);
+                  if (percent < 60) return null;
+
+                  let textColor = "text-amber-455";
+                  let dotColor = "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]";
+                  
+                  if (percent >= 80) {
+                    textColor = "text-red-400";
+                    dotColor = "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse";
+                  }
+
+                  return (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
+                      <p className={`text-xs font-bold ${textColor} flex items-center gap-1.5`}>
+                        Warning: {activeTxCategory} is at {percent}% of spending limit!
+                      </p>
+                      {percent > 100 && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider text-red-155 bg-red-950/90 border border-red-800 shadow-[0_0_12px_rgba(239,68,68,0.95)] animate-pulse">
+                          OVER LIMIT
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Inline Category Creator Tool Popover */}
                 {showCategoryCreator && (
@@ -883,7 +943,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 border-b border-slate-900 pb-2 mb-3">
                       Create Custom Category
                     </h4>
-                    
+
                     <div className="space-y-3">
                       <div className="flex flex-col gap-1">
                         <label htmlFor="newCatName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -923,11 +983,10 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                               key={color.hex}
                               type="button"
                               onClick={() => setNewCatColor(color.hex)}
-                              className={`w-6 h-6 rounded-full transition-transform active:scale-80 cursor-pointer border ${
-                                newCatColor === color.hex 
-                                  ? "scale-115 border-white ring-2 ring-[var(--rank-accent)]/50" 
+                              className={`w-6 h-6 rounded-full transition-transform active:scale-80 cursor-pointer border ${newCatColor === color.hex
+                                  ? "scale-115 border-white ring-2 ring-[var(--rank-accent)]/50"
                                   : "border-transparent"
-                              }`}
+                                }`}
                               style={{ backgroundColor: color.hex }}
                               title={color.name}
                             />
@@ -977,7 +1036,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                   <Calendar className="h-5 w-5 text-purple-400" />
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-lg tracking-wide">🔄 RECURRING ROSTER</h3>
+                  <h3 className="font-black text-white text-lg tracking-wide">RECURRING ROSTER</h3>
                   <p className="text-xs text-slate-400">Scheduled monthly bills & deposits</p>
                 </div>
               </div>
@@ -998,7 +1057,7 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                   <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">
                     Schedule New Recurring Rule
                   </h4>
-                  
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="flex flex-col gap-1">
                       <label htmlFor="newRecName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -1130,9 +1189,8 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                           </div>
 
                           <div className="flex items-center gap-3 ml-3">
-                            <span className={`font-mono text-sm font-bold ${
-                              rule.type === "income" ? "text-emerald-400" : "text-slate-400"
-                            }`}>
+                            <span className={`font-mono text-sm font-bold ${rule.type === "income" ? "text-emerald-400" : "text-slate-400"
+                              }`}>
                               {rule.type === "income" ? "+" : "-"}{currencySymbol}{rule.amount}
                             </span>
                             <button
@@ -1161,21 +1219,108 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-5 border-b border-slate-850 pb-4">
           <div>
             <h2 className="text-xl font-black text-white tracking-wide flex items-center gap-2">
-              📋 RECENT TRANSACTION HISTORY LOG
+              <History className="h-5 w-5 text-[var(--rank-accent)]" />
+              RECENT TRANSACTION HISTORY LOG
             </h2>
             <p className="text-xs text-slate-400">
               Complete active registry of transactions logged in the current monthly cycle
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleResetStorage}
-            className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-2xs font-bold uppercase tracking-wider text-rose-350 hover:bg-rose-500/15 active:scale-95 transition-all duration-105 cursor-pointer"
-          >
-            Reset Ledger
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowLimitManager(!showLimitManager)}
+              className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wider transition-all duration-100 flex items-center gap-1.5 cursor-pointer ${
+                showLimitManager
+                  ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
+                  : "border-slate-800 bg-slate-950/60 text-slate-400 hover:text-white"
+              }`}
+            >
+              <Sliders className="h-3.5 w-3.5" />
+              {showLimitManager ? "Hide Spending Limits" : "Manage Spending Limits"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetStorage}
+              className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-2xs font-bold uppercase tracking-wider text-rose-350 hover:bg-rose-500/15 active:scale-95 transition-all duration-105 cursor-pointer"
+            >
+              Reset Ledger
+            </button>
+          </div>
         </div>
+
+        {/* Collapsible Category Spending Limits Workspace */}
+        {showLimitManager && (
+          <div className="mb-6 rounded-xl border border-slate-800 bg-slate-950/40 p-4 animate-fade-in-up">
+            <div className="flex items-center gap-2 mb-3 border-b border-slate-900 pb-2">
+              <Sliders className="h-4 w-4 text-[var(--rank-accent)]" />
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">
+                Category Spending Caps / Limits Configurator
+              </h3>
+            </div>
+            
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {categories.map((c) => {
+                const spent = categoryExpenses[c.name] || 0;
+                return (
+                  <div
+                    key={c.name}
+                    className="flex flex-col justify-between p-3 rounded-lg bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/50 transition-all duration-200"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black uppercase tracking-wide truncate" style={{ color: c.color }}>
+                          {c.name}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Spent: {currencySymbol}{spent.toFixed(0)}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-slate-500 mt-0.5 font-bold">
+                        Cap Limit: {c.monthlyLimit ? `${currencySymbol}${c.monthlyLimit}` : "No Limit"}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-1.5 items-center mt-3">
+                      <div className="relative flex-1">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-2xs font-mono">
+                          {currencySymbol}
+                        </span>
+                        <input
+                          type="number"
+                          placeholder="No Limit"
+                          className="w-full rounded border border-slate-800 bg-slate-950 pl-5 pr-2 py-1 text-2xs text-white outline-none focus:border-slate-700"
+                          value={c.monthlyLimit !== null ? c.monthlyLimit : ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const limitVal = val.trim() !== "" ? parseFloat(val) : null;
+                            setCategories((prev) =>
+                              prev.map((cat) =>
+                                cat.name === c.name ? { ...cat, monthlyLimit: limitVal } : cat
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveState(isInitialized, initialBalance, transactions, categories, recurringRules, processedRecurring);
+                          showTempNotification(`Limit for "${c.name}" updated!`);
+                        }}
+                        className="rounded bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 text-2xs font-bold text-white active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {transactions.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/20 p-12 text-center text-slate-500 text-sm">
@@ -1197,24 +1342,17 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                 {transactions.map((tx) => {
                   const categoryData = categories.find((c) => c.name === tx.category);
                   const baseColor = categoryData?.color || "#64748b";
-                  
+
                   const limitStatus = tx.type === "expense" ? checkCategoryThreshold(tx.category) : { exceeded: false, percent: 0 };
-                  
-                  const badgeStyle = limitStatus.exceeded
-                    ? {
-                        backgroundColor: "#f59e0b15",
-                        borderColor: "#f59e0b",
-                        color: "#fbbf24",
-                      }
-                    : {
-                        backgroundColor: `${baseColor}15`,
-                        borderColor: baseColor,
-                        color: baseColor,
-                      };
+                  const badgeStyle = {
+                    backgroundColor: `${baseColor}15`,
+                    borderColor: baseColor,
+                    color: baseColor,
+                  };
 
                   return (
-                    <tr key={tx.id} className="hover:bg-slate-950/15 transition-colors duration-150">
-                      <td className="py-3.5 px-4 font-mono text-xs text-slate-405">
+                    <tr key={tx.id} className="hover:bg-slate-955/15 transition-colors duration-150">
+                      <td className="py-3.5 px-4 font-mono text-xs text-slate-400">
                         {tx.date}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-200">
@@ -1222,18 +1360,39 @@ export function MoneyModule({ autoApproveTransactions }: MoneyModuleProps) {
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-all ${
-                            limitStatus.exceeded ? "animate-pulse" : ""
-                          }`}
+                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-all"
                           style={badgeStyle}
                         >
-                          {limitStatus.exceeded && <AlertCircle className="h-3 w-3 shrink-0" />}
-                          {limitStatus.exceeded ? `⚠️ ${tx.category} (>80% Cap)` : tx.category}
+                          {(() => {
+                            const hasLimit = categoryData?.monthlyLimit !== null;
+                            const percent = limitStatus.percent;
+                            let dotColor = "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]";
+                            if (hasLimit) {
+                              if (percent >= 80) {
+                                dotColor = "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)] animate-pulse";
+                              } else if (percent >= 60) {
+                                dotColor = "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)]";
+                              }
+                            }
+                            return (
+                              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${dotColor}`} />
+                            );
+                          })()}
+                          {tx.category}
+                          {categoryData?.monthlyLimit !== null && (
+                            <span className="opacity-80 text-[10px] font-mono ml-0.5">
+                              ({Math.round(limitStatus.percent)}%)
+                            </span>
+                          )}
+                          {limitStatus.percent > 100 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-red-100 bg-red-950/90 border border-red-800/80 shadow-[0_0_12px_rgba(239,68,68,0.95)] animate-pulse">
+                              OVER LIMIT
+                            </span>
+                          )}
                         </span>
                       </td>
-                      <td className={`py-3.5 px-4 font-mono text-sm font-black ${
-                        tx.type === "income" ? "text-emerald-400 font-bold" : "text-slate-400"
-                      }`}>
+                      <td className={`py-3.5 px-4 font-mono text-sm font-black ${tx.type === "income" ? "text-emerald-400 font-bold" : "text-slate-400"
+                        }`}>
                         {tx.type === "income" ? "+" : "-"}{currencySymbol}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-3.5 px-4 text-right">

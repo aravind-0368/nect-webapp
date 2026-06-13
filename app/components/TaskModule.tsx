@@ -2,7 +2,10 @@
 
 import { useState, useEffect, FormEvent } from "react";
 import Image from "next/image";
-import { Plus, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Circle, PlusCircle, ClipboardList } from "lucide-react";
+import { motion } from "framer-motion";
+import { useNectStore } from "../store/useNectStore";
+import { PowerUpBoost } from "./PowerUpBoost";
 
 type PriorityLevel = "low" | "medium" | "high";
 
@@ -11,10 +14,6 @@ interface Task {
   title: string;
   priority: PriorityLevel;
   completed: boolean;
-}
-
-interface TaskModuleProps {
-  onAwardPoints: (amount: number) => void;
 }
 
 const defaultTasks: Task[] = [
@@ -51,14 +50,15 @@ const getPriorityPoints = (priority: PriorityLevel): number => {
   }
 };
 
-export function TaskModule({ onAwardPoints }: TaskModuleProps) {
-  // --- STATE ---
+export function TaskModule() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTitle, setNewTitle] = useState<string>("");
   const [newPriority, setNewPriority] = useState<PriorityLevel>("medium");
   const [notification, setNotification] = useState<string>("");
 
-  // --- LOCAL STORAGE SYNC ---
+  // Zustand state
+  const { awardPoints } = useNectStore();
+
   useEffect(() => {
     const timer = setTimeout(() => {
       const stored = localStorage.getItem("nect_tasks");
@@ -82,7 +82,6 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
     }, 3000);
   };
 
-  // --- HANDLERS ---
   const handleAddTask = (e: FormEvent) => {
     e.preventDefault();
     const titleText = newTitle.trim();
@@ -108,8 +107,8 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
         const nextCompleted = !task.completed;
         const points = getPriorityPoints(task.priority);
         
-        // Award or deduct points
-        onAwardPoints(nextCompleted ? points : -points);
+        // Award or deduct points from Zustand store
+        awardPoints(nextCompleted ? points : -points, "Tasks");
         
         if (nextCompleted) {
           showTempNotification(`Task complete! Received +${points} XP`);
@@ -140,15 +139,20 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
       {/* Header Panel */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
-            <Image
-              src="/assets/icons/tasks.png"
-              alt="Task module icon"
-              width={44}
-              height={44}
-              className="h-11 w-11 object-contain"
-            />
-          </div>
+          
+          {/* Header icon with PowerUpBoost */}
+          <PowerUpBoost moduleKey="Tasks">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
+              <Image
+                src="/assets/icons/tasks.png"
+                alt="Task module icon"
+                width={44}
+                height={44}
+                className="h-11 w-11 object-contain"
+              />
+            </div>
+          </PowerUpBoost>
+
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
               Checklist Engine
@@ -170,7 +174,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
       {/* Task Intake Form Card */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
         <h3 className="text-lg font-black text-white flex items-center gap-2 border-b border-slate-800 pb-3 mb-5">
-          <Plus className="h-5 w-5 text-indigo-400" /> ➕ CREATE NEW TASK OBJECTIVE
+          <PlusCircle className="h-5 w-5 text-indigo-400" /> CREATE NEW TASK OBJECTIVE
         </h3>
 
         <form onSubmit={handleAddTask} className="space-y-5">
@@ -204,7 +208,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                   className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
                     newPriority === "low"
                       ? "bg-slate-800 text-slate-200 border border-slate-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-355"
+                      : "text-slate-505 hover:text-slate-355"
                   }`}
                 >
                   Low
@@ -215,7 +219,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                   className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
                     newPriority === "medium"
                       ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm"
-                      : "text-slate-500 hover:text-slate-355"
+                      : "text-slate-505 hover:text-slate-355"
                   }`}
                 >
                   Medium
@@ -226,7 +230,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                   className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
                     newPriority === "high"
                       ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm"
-                      : "text-slate-500 hover:text-slate-355"
+                      : "text-slate-505 hover:text-slate-355"
                   }`}
                 >
                   High
@@ -234,7 +238,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
               </div>
             </div>
 
-            {/* Submission active-scale tactile button */}
+            {/* Submission button */}
             <button
               type="submit"
               className="w-full md:w-auto rounded-xl bg-indigo-650 hover:bg-indigo-600 px-6 py-3.5 text-xs font-black uppercase tracking-widest text-white transition-all duration-100 active:scale-95 cursor-pointer shadow-[0_0_20px_rgba(99,102,241,0.2)]"
@@ -245,10 +249,10 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
         </form>
       </div>
 
-      {/* Main daily objectives tracker log table */}
+      {/* Main objectives matrix log */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
         <h3 className="text-lg font-black text-white flex items-center gap-2 border-b border-slate-800 pb-4 mb-4">
-          📋 DAILY OBJECTIVE MATRIX LOG
+          <ClipboardList className="h-5 w-5 text-[var(--rank-accent)]" /> DAILY OBJECTIVE MATRIX LOG
         </h3>
 
         {tasks.length === 0 ? (
@@ -259,7 +263,7 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-550">
                   <th className="py-3 px-4 w-28">Status</th>
                   <th className="py-3 px-4">Task Description</th>
                   <th className="py-3 px-4 w-44">Priority Level</th>
@@ -270,10 +274,13 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                 {tasks.map((task) => {
                   const pointsAwarded = getPriorityPoints(task.priority);
                   return (
-                    <tr
+                    /* Scale pulse row animation on complete status toggle */
+                    <motion.tr
                       key={task.id}
-                      className={`transition-all duration-300 hover:bg-slate-950/15 ${
-                        task.completed ? "opacity-40" : "opacity-100"
+                      animate={task.completed ? { scale: [1, 1.015, 1] } : {}}
+                      transition={{ duration: 0.2 }}
+                      className={`transition-all duration-350 hover:bg-slate-950/15 ${
+                        task.completed ? "opacity-45 bg-emerald-550/5" : "opacity-100"
                       }`}
                     >
                       {/* STATUS CHECKBOX COLUMN */}
@@ -283,17 +290,22 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                           onClick={() => handleToggleTask(task.id)}
                           className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
                         >
-                          {task.completed ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                          ) : (
-                            <Circle className="h-5 w-5 text-slate-600 hover:text-slate-450 shrink-0" />
-                          )}
+                          <motion.div
+                            animate={task.completed ? { scale: [1, 1.25, 1], filter: ["drop-shadow(0 0 0px rgba(16,185,129,0))", "drop-shadow(0 0 8px rgba(16,185,129,0.8))", "drop-shadow(0 0 0px rgba(16,185,129,0))"] } : {}}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {task.completed ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-slate-600 hover:text-slate-450 shrink-0" />
+                            )}
+                          </motion.div>
                           <span>{task.completed ? "Done" : "Pending"}</span>
                         </button>
                       </td>
 
                       {/* TASK DESCRIPTION COLUMN WITH TACTILE line-through */}
-                      <td className={`py-4 px-4 font-bold text-slate-200 transition-all duration-300 ${
+                      <td className={`py-4 px-4 font-bold text-slate-205 transition-all duration-300 ${
                         task.completed ? "line-through text-slate-500" : ""
                       }`}>
                         {task.title}
@@ -323,13 +335,13 @@ export function TaskModule({ onAwardPoints }: TaskModuleProps) {
                         <button
                           type="button"
                           onClick={() => handleDeleteTask(task.id)}
-                          className="rounded-lg border border-rose-500/10 bg-rose-500/5 p-2 text-rose-300 hover:text-rose-400 hover:bg-rose-500/15 transition-all duration-100 active:scale-95 cursor-pointer"
+                          className="rounded-lg border border-rose-500/10 bg-rose-500/5 p-2 text-rose-350 hover:text-rose-450 hover:bg-rose-500/15 transition-all duration-100 active:scale-95 cursor-pointer"
                           aria-label={`Delete task ${task.title}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
               </tbody>
