@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { useNectStore } from "../store/useNectStore";
 import { FireStreak } from "./FireStreak";
 import { PowerUpBoost } from "./PowerUpBoost";
+import { BodyPartVectorMap } from "./BodyPartVectorMap";
 
 type DayName =
   | "Monday"
@@ -71,6 +72,15 @@ const initialWorkoutItems: WorkoutItem[] = [
     bodyPart: "Back",
     name: "Lat Pulldown",
     reps: 12,
+    sets: 4,
+    checkedSets: [false, false, false, false],
+  },
+  {
+    id: 5,
+    day: "Tuesday",
+    bodyPart: "Shoulders",
+    name: "Overhead Dumbbell Press",
+    reps: 10,
     sets: 4,
     checkedSets: [false, false, false, false],
   },
@@ -516,14 +526,11 @@ function TodayWorkoutView({
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black border border-slate-800 overflow-hidden">
-                      <Image
-                        src={getBodyPartIcon(item.bodyPart)}
-                        alt={item.bodyPart}
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 object-cover"
-                        style={{ mixBlendMode: "screen" }}
+                    <div className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950/80 border border-slate-800 p-0.5 overflow-hidden">
+                      <BodyPartVectorMap
+                        selectedPart={item.bodyPart}
+                        interactive={false}
+                        size="small"
                       />
                     </div>
                     <div>
@@ -657,55 +664,92 @@ function WeeklyPlanView({
           </label>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-[1.3fr_1.5fr_0.7fr_0.7fr_auto] items-center">
-          <div className="flex items-center gap-2 w-full">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black border border-slate-700 overflow-hidden">
-              <Image
-                src={getBodyPartIcon(bodyPart)}
-                alt={bodyPart}
-                width={44}
-                height={44}
-                className="h-11 w-11 object-cover"
-                style={{ mixBlendMode: "screen" }}
-              />
-            </div>
-            <select
-              className={`${fieldClass} flex-1`}
-              value={bodyPart}
-              onChange={(event) => onSetBodyPart(event.target.value)}
-            >
-              {["Chest", "Arms", "Legs", "Back", "Shoulders", "Core"].map((part) => (
-                <option key={part}>{part}</option>
-              ))}
-            </select>
+        <div className="mt-5 flex flex-col md:flex-row gap-6 items-center">
+          {/* Interactive Vector Map Selector */}
+          <div className="flex flex-col items-center gap-2 p-3 bg-slate-950/60 border border-slate-800 rounded-2xl shrink-0">
+            <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase">
+              Interactive Selector
+            </span>
+            <BodyPartVectorMap
+              selectedPart={bodyPart}
+              onSelectPart={onSetBodyPart}
+              interactive={true}
+              size="medium"
+            />
+            <span className="text-xs font-black uppercase tracking-widest text-cyan-400 mt-1">
+              {bodyPart || "Select Part"}
+            </span>
           </div>
-          <input
-            className={fieldClass}
-            placeholder="Exercise Name"
-            required
-            value={exerciseName}
-            onChange={(event) => onSetExerciseName(event.target.value)}
-          />
-          <input
-            className={fieldClass}
-            min={1}
-            type="number"
-            value={reps}
-            onChange={(event) => onSetReps(Number(event.target.value))}
-          />
-          <input
-            className={fieldClass}
-            min={1}
-            type="number"
-            value={sets}
-            onChange={(event) => onSetSets(Number(event.target.value))}
-          />
-          <button
-            type="submit"
-            className="rounded-xl bg-emerald-650 hover:bg-emerald-600 px-5 py-3 text-sm font-black text-white transition-all duration-100 active:scale-95"
-          >
-            Add This Workout Plan
-          </button>
+
+          {/* Form Fields Column */}
+          <div className="flex-1 w-full grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Target Muscle Group
+                </span>
+                <select
+                  className={fieldClass}
+                  value={bodyPart}
+                  onChange={(event) => onSetBodyPart(event.target.value)}
+                >
+                  {["Chest", "Arms", "Legs", "Back", "Shoulders", "Core"].map((part) => (
+                    <option key={part}>{part}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Exercise Name
+                </span>
+                <input
+                  className={fieldClass}
+                  placeholder="e.g. Overhead Dumbbell Press"
+                  required
+                  value={exerciseName}
+                  onChange={(event) => onSetExerciseName(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 grid-cols-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Reps
+                </span>
+                <input
+                  className={fieldClass}
+                  min={1}
+                  type="number"
+                  value={reps}
+                  onChange={(event) => onSetReps(Number(event.target.value))}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Sets
+                </span>
+                <input
+                  className={fieldClass}
+                  min={1}
+                  type="number"
+                  value={sets}
+                  onChange={(event) => onSetSets(Number(event.target.value))}
+                />
+              </label>
+
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="w-full h-11 rounded-xl bg-emerald-650 hover:bg-emerald-600 px-4 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 active:scale-95 flex items-center justify-center"
+                >
+                  Add to Split
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </form>
 
@@ -738,14 +782,11 @@ function WeeklyPlanView({
                         className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-955/50 p-3"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black border border-slate-800 overflow-hidden">
-                            <Image
-                              src={getBodyPartIcon(item.bodyPart)}
-                              alt={item.bodyPart}
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 object-cover"
-                              style={{ mixBlendMode: "screen" }}
+                          <div className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-955/80 border border-slate-800 p-0.5 overflow-hidden">
+                            <BodyPartVectorMap
+                              selectedPart={item.bodyPart}
+                              interactive={false}
+                              size="small"
                             />
                           </div>
                           <div>

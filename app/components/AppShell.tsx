@@ -85,29 +85,16 @@ export function AppShell({ onLogout }: AppShellProps) {
       <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-xl">
         <div className="mx-auto flex min-h-20 w-full max-w-7xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6">
           
-          {/* Logo container with Rank-Reactive Aura */}
-          <button
-            type="button"
-            className="flex items-center justify-center rounded-2xl border bg-slate-900/60 p-2.5 active:scale-95 transition-all duration-300"
-            style={{
-              borderColor: "var(--rank-accent)",
-              boxShadow: "0 0 16px var(--rank-accent), inset 0 0 10px var(--rank-accent)"
-            }}
-            onClick={() => {
-              setSettingsOpen(false);
-              setActiveModule("Dashboard");
-            }}
-            aria-label="Open dashboard"
-          >
+          
             <Image
               src="/assets/logo/nect-logo.png"
               alt="Nect logo"
-              width={142}
-              height={48}
+              width={162}
+              height={68}
               className="h-auto w-28 sm:w-32"
               priority
             />
-          </button>
+         
 
           {/* Navigation Shell */}
           <nav className="flex flex-1 flex-wrap justify-center gap-2">

@@ -18,6 +18,7 @@ import {
   RadialBar
 } from "recharts";
 import { useNectStore, getActiveRank } from "../store/useNectStore";
+import { BodyPartVectorMap } from "./BodyPartVectorMap";
 
 type PriorityLevel = "low" | "medium" | "high";
 
@@ -196,10 +197,11 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
       legs: 45,
       back: 62,
       arms: 90,
-      abs: 20
+      abs: 20,
+      shoulders: 75
     };
 
-    const groups = ["chest", "legs", "back", "arms", "abs"];
+    const groups = ["chest", "legs", "back", "arms", "abs", "shoulders"];
     const results: Record<string, number> = {};
 
     groups.forEach((group) => {
@@ -207,7 +209,8 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
         const bp = w.bodyPart.toLowerCase();
         if (group === "chest") return bp.includes("chest");
         if (group === "legs") return bp.includes("leg");
-        if (group === "back") return bp.includes("back") || bp.includes("shoulder");
+        if (group === "back") return bp.includes("back");
+        if (group === "shoulders") return bp.includes("shoulder") || bp.includes("shoulders");
         if (group === "arms") return bp.includes("arm") || bp.includes("bicep") || bp.includes("tricep");
         if (group === "abs") return bp.includes("abs") || bp.includes("core");
         return false;
@@ -230,6 +233,14 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
     });
 
     return results;
+  }, [workouts]);
+
+  const completedParts = useMemo(() => {
+    const uniqueParts = Array.from(new Set(workouts.map((w) => w.bodyPart)));
+    return uniqueParts.filter((part) => {
+      const related = workouts.filter((w) => w.bodyPart === part);
+      return related.length > 0 && related.every((w) => w.checkedSets && w.checkedSets.every(Boolean));
+    });
   }, [workouts]);
 
   // Dynamic Color helpers
@@ -265,7 +276,7 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
     return "#47556908";
   };
 
-  const [hoveredZone, setHoveredZone] = useState<"chest" | "legs" | "back" | "arms" | "abs" | "head" | null>(null);
+  const [hoveredZone, setHoveredZone] = useState<"chest" | "legs" | "back" | "arms" | "abs" | "head" | "shoulders" | null>(null);
 
   // --- OTHERS DATA ENGINE ---
   const foodTelemetry = useMemo(() => {
@@ -445,11 +456,10 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
             const progressPercent = Math.min(100, Math.round((foodTelemetry.calories / caloriesTarget) * 100));
             return (
               <div
-                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
-                  isOverloaded
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isOverloaded
                     ? "border-red-500 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse"
                     : "border-amber-500/20 bg-slate-900/40 hover:border-amber-500/45 hover:shadow-[0_0_20px_rgba(245,158,11,0.06)]"
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -481,7 +491,7 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                       / {caloriesTarget} Target
                     </span>
                   </div>
-                  
+
                   {/* Glowing Progress Bar */}
                   <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
                     <div
@@ -504,11 +514,10 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
             const progressPercent = Math.min(100, Math.round((foodTelemetry.protein / proteinTarget) * 100));
             return (
               <div
-                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
-                  isGoalMet
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
                     ? "border-cyan-400 bg-cyan-950/15 shadow-[0_0_20px_rgba(34,211,238,0.22)]"
                     : "border-cyan-500/20 bg-slate-900/40 hover:border-cyan-500/45 hover:shadow-[0_0_20px_rgba(34,211,238,0.06)]"
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -540,7 +549,7 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                       / {proteinTarget}g Target
                     </span>
                   </div>
-                  
+
                   {/* Glowing Progress Bar */}
                   <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
                     <div
@@ -563,11 +572,10 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
             const progressPercent = Math.min(100, Math.round((foodTelemetry.fiber / fiberTarget) * 100));
             return (
               <div
-                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${
-                  isGoalMet
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
                     ? "border-emerald-500 bg-emerald-950/15 shadow-[0_0_20px_rgba(16,185,129,0.22)]"
                     : "border-emerald-500/20 bg-slate-900/40 hover:border-emerald-500/45 hover:shadow-[0_0_20px_rgba(16,185,129,0.06)]"
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -599,7 +607,7 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                       / {fiberTarget}g Target
                     </span>
                   </div>
-                  
+
                   {/* Glowing Progress Bar */}
                   <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
                     <div
@@ -641,203 +649,362 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
               </span>
             </div>
 
-            {/* SVG Interactive Human Asset Base */}
-            <div className="relative w-56 h-[290px] mx-auto py-2">
-              {/* Generated Biometric Base Graphic */}
-              <img 
-                src="/cybernetic_body.png" 
-                alt="Biometric Scan Base" 
-                className="absolute inset-0 w-full h-full object-contain scale-[1.25] pointer-events-none opacity-55 mix-blend-screen z-0 filter brightness-110 contrast-125"
-              />
-              <svg
-                className="absolute inset-0 w-full h-full text-slate-800 transition-all duration-300 filter drop-shadow-[0_0_25px_rgba(34,211,238,0.12)] z-10"
-                viewBox="0 0 100 200"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.0"
-              >
-                {/* 0. HEAD/BRAIN TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("head")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  <circle 
-                    cx="50" 
-                    cy="14" 
-                    r="5" 
-                    stroke={segmentStroke("head")} 
-                    fill={segmentFill("head")} 
-                    className="transition-all duration-300"
-                    strokeWidth="1.2"
+            {/* SVG Interactive Human Asset Base & Callouts */}
+            <div className="relative w-full max-w-[380px] h-[280px] mx-auto z-10">
+              {/* SVG Connecting Lines Overlay */}
+              {!isScanning && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 380 280">
+                  {/* Draw paths */}
+                  {/* Left Side: Head, Shoulders, Arms, Legs */}
+                  {/* Head (Brain) */}
+                  <path
+                    d="M 190,32 L 140,32 L 120,25 L 98,25"
+                    fill="none"
+                    stroke={hoveredZone === "head" ? "#c084fc" : "#a855f7"}
+                    strokeWidth={hoveredZone === "head" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "head" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
                   />
-                  <circle 
-                    cx="50" 
-                    cy="14" 
-                    r="1.2" 
-                    className={isPeakMentalPowerActive ? "fill-purple-400" : "fill-slate-500"} 
+                  {/* Shoulders */}
+                  <path
+                    d="M 173,73 L 140,73 L 120,97 L 98,97"
+                    fill="none"
+                    stroke={hoveredZone === "shoulders" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "shoulders" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "shoulders" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
                   />
-                  {/* Callout line and text */}
-                  <path 
-                    d="M 54,14 L 74,14 L 78,8" 
-                    className={isPeakMentalPowerActive ? "stroke-purple-500/50" : "stroke-slate-500/30"} 
-                    strokeWidth="0.8" 
-                    strokeDasharray="1.5,1.5" 
+                  {/* Arms */}
+                  <path
+                    d="M 158,120 L 140,120 L 120,169 L 98,169"
+                    fill="none"
+                    stroke={hoveredZone === "arms" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "arms" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "arms" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
                   />
-                  <text 
-                    x="79" 
-                    y="7" 
-                    className={`text-[2.7px] font-mono font-black tracking-wider uppercase ${isPeakMentalPowerActive ? "fill-purple-400" : "fill-slate-400"}`}
-                  >
-                    BRAIN NODE
-                  </text>
-                  <text 
-                    x="79" 
-                    y="10" 
-                    className={`text-[2.0px] font-mono font-bold tracking-wider uppercase ${isPeakMentalPowerActive ? "fill-purple-300/70" : "fill-slate-500"}`}
-                  >
-                    {isPeakMentalPowerActive ? "PEAK MENTAL POWER" : "NORMAL OUTPUT"}
-                  </text>
-                </motion.g>
+                  {/* Legs */}
+                  <path
+                    d="M 171,200 L 145,200 L 125,241 L 98,241"
+                    fill="none"
+                    stroke={hoveredZone === "legs" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "legs" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "legs" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
+                  />
 
-                {/* 1. CHEST TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("chest")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  <circle 
-                    cx="50" 
-                    cy="52" 
-                    r="8" 
-                    stroke={segmentStroke("chest")} 
-                    fill={segmentFill("chest")} 
-                    className="transition-colors duration-200"
-                    strokeWidth="1.2"
+                  {/* Right Side: Back, Chest, Core */}
+                  {/* Back */}
+                  <path
+                    d="M 205,100 L 230,100 L 250,32 L 282,32"
+                    fill="none"
+                    stroke={hoveredZone === "back" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "back" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "back" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
                   />
-                  <circle cx="50" cy="52" r="1.5" className="fill-cyan-400" />
-                  <path d="M 40,52 L 45,52 M 55,52 L 60,52 M 50,42 L 50,47 M 50,57 L 50,62" className="stroke-cyan-500/35" strokeWidth="0.8" />
-                  {/* Callout line and text */}
-                  <path d="M 58,52 L 74,52 L 78,38" className="stroke-cyan-500/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-                  <text x="79" y="34" className="fill-cyan-400 text-[2.7px] font-mono font-black tracking-wider uppercase">CHEST STATUS</text>
-                  <text x="79" y="37" className="fill-cyan-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">PECTORALS</text>
-                </motion.g>
+                  {/* Chest */}
+                  <path
+                    d="M 200,85 L 230,85 L 250,112 L 282,112"
+                    fill="none"
+                    stroke={hoveredZone === "chest" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "chest" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "chest" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
+                  />
+                  {/* Core */}
+                  <path
+                    d="M 190,120 L 230,120 L 250,192 L 282,192"
+                    fill="none"
+                    stroke={hoveredZone === "abs" ? "#22d3ee" : "#06b6d4"}
+                    strokeWidth={hoveredZone === "abs" ? 1.5 : 0.8}
+                    opacity={hoveredZone && hoveredZone !== "abs" ? 0.2 : 0.65}
+                    style={{ transition: "all 0.3s" }}
+                  />
 
-                {/* 2. ABS/CORE TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("abs")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  <circle 
-                    cx="50" 
-                    cy="80" 
-                    r="8" 
-                    stroke={segmentStroke("abs")} 
-                    fill={segmentFill("abs")} 
-                    className="transition-colors duration-200"
-                    strokeWidth="1.2"
-                  />
-                  {/* Lightning Bolt */}
-                  <path d="M 50,77 L 48.5,80 L 50,80 L 50,83 L 51.5,80 L 50,80 Z" className="fill-yellow-400 stroke-none" />
-                  <path d="M 58,80 L 74,80 L 78,86" className="stroke-yellow-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-                  <text x="79" y="85" className="fill-yellow-400 text-[2.7px] font-mono font-black tracking-wider uppercase">ENERGY CORE</text>
-                  <text x="79" y="88" className="fill-yellow-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">MACROS OPTIMAL</text>
-                </motion.g>
+                  {/* Animated Data Extraction Pulses */}
+                  {!isScanning && (
+                    <>
+                      {(!hoveredZone || hoveredZone === "head") && (
+                        <circle r="1.5" fill="#c084fc">
+                          <animateMotion dur="2s" repeatCount="indefinite" path="M 190,32 L 140,32 L 120,25 L 98,25" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "shoulders") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.4s" repeatCount="indefinite" path="M 173,73 L 140,73 L 120,97 L 98,97" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "arms") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.2s" repeatCount="indefinite" path="M 158,120 L 140,120 L 120,169 L 98,169" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "legs") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.6s" repeatCount="indefinite" path="M 171,200 L 145,200 L 125,241 L 98,241" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "back") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.1s" repeatCount="indefinite" path="M 205,100 L 230,100 L 250,32 L 282,32" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "chest") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.3s" repeatCount="indefinite" path="M 200,85 L 230,85 L 250,112 L 282,112" />
+                        </circle>
+                      )}
+                      {(!hoveredZone || hoveredZone === "abs") && (
+                        <circle r="1.5" fill="#22d3ee">
+                          <animateMotion dur="2.5s" repeatCount="indefinite" path="M 190,120 L 230,120 L 250,192 L 282,192" />
+                        </circle>
+                      )}
+                    </>
+                  )}
+                </svg>
+              )}
 
-                {/* 3. ARMS TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("arms")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  {/* Left Arm HUD Ring */}
-                  <ellipse 
-                    cx="22" 
-                    cy="75" 
-                    rx="6" 
-                    ry="3" 
-                    transform="rotate(-20, 22, 75)" 
-                    stroke={segmentStroke("arms")} 
-                    fill={segmentFill("arms")}
-                    strokeWidth="1.2"
-                  />
-                  {/* Right Arm HUD Ring */}
-                  <ellipse 
-                    cx="78" 
-                    cy="75" 
-                    rx="6" 
-                    ry="3" 
-                    transform="rotate(20, 78, 75)" 
-                    stroke={segmentStroke("arms")} 
-                    fill={segmentFill("arms")}
-                    strokeWidth="1.2"
-                  />
-                  <circle cx="22" cy="75" r="1.5" className="fill-cyan-400" />
-                  <circle cx="78" cy="75" r="1.5" className="fill-cyan-400" />
-                  <path d="M 16,75 L 4,75 L 4,63" className="stroke-cyan-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-                  {/* Dumbbell Icon representation */}
-                  <path d="M 1,57.5 L 3,57.5 M 1,56.5 L 1,58.5 M 3,56.5 L 3,58.5" className="stroke-cyan-400" strokeWidth="0.8" />
-                  <text x="6" y="57" className="fill-cyan-400 text-[2.7px] font-mono font-black tracking-wider uppercase">UPPER BODY: 82%</text>
-                  <text x="6" y="60" className="fill-cyan-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">STRENGTH / REPAIR</text>
-                </motion.g>
+              {/* The Layout grid containing Left Callouts, Center Body, Right Callouts */}
+              <div className="absolute inset-0 flex justify-between items-center w-full h-full z-20">
+                
+                {/* Left Side Callouts */}
+                <div className="w-[95px] flex flex-col justify-between h-full py-1">
+                  {/* Card 1: Head */}
+                  {(() => {
+                    const isHeadActive = isPeakMentalPowerActive;
+                    const colorClass = isHeadActive ? "text-purple-400 font-extrabold" : "text-slate-400";
+                    const scoreText = isHeadActive ? "PEAK" : "NORM";
+                    const isHovered = hoveredZone === "head";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("head")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-950/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/brain.png" alt="brain" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Brain</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${colorClass}`}>{scoreText}</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isHeadActive ? "#c084fc" : "#64748b" }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
-                {/* 4. LEGS TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("legs")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  <circle 
-                    cx="38.5" 
-                    cy="136" 
-                    r="6" 
-                    stroke={segmentStroke("legs")} 
-                    fill={segmentFill("legs")} 
-                    className="transition-colors duration-200"
-                    strokeWidth="1.2"
-                  />
-                  <circle 
-                    cx="61.5" 
-                    cy="136" 
-                    r="6" 
-                    stroke={segmentStroke("legs")} 
-                    fill={segmentFill("legs")} 
-                    className="transition-colors duration-200"
-                    strokeWidth="1.2"
-                  />
-                  <circle cx="38.5" cy="136" r="1.5" className="fill-emerald-400" />
-                  <circle cx="61.5" cy="136" r="1.5" className="fill-emerald-400" />
-                  <path d="M 32.5,136 L 22,136 L 18,145" className="stroke-emerald-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-                  <text x="2" y="149" className="fill-emerald-400 text-[2.7px] font-mono font-black tracking-wider uppercase">LOWER BODY: 88%</text>
-                  <text x="2" y="152" className="fill-emerald-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">MOBILITY / END</text>
-                </motion.g>
+                  {/* Card 2: Shoulders */}
+                  {(() => {
+                    const score = muscleGroupsProgress["shoulders"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "shoulders";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("shoulders")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/shoulders.png" alt="shoulders" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase truncate">Shoulder</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
-                {/* 5. BACK TARGET (Interactive Zone) */}
-                <motion.g
-                  className="cursor-pointer"
-                  onMouseEnter={() => !isScanning && setHoveredZone("back")}
-                  onMouseLeave={() => setHoveredZone(null)}
-                >
-                  <polygon 
-                    points="50,26 56,31 50,36 44,31" 
-                    stroke={segmentStroke("back")} 
-                    fill={segmentFill("back")} 
-                    className="transition-colors duration-200"
-                    strokeWidth="1.2"
-                  />
-                  <circle cx="50" cy="31" r="1.5" className="fill-indigo-400" />
-                  <path d="M 44,31 L 30,31 L 26,23" className="stroke-indigo-400/50" strokeWidth="0.8" strokeDasharray="1.5,1.5" />
-                  <text x="2" y="19" className="fill-indigo-400 text-[2.7px] font-mono font-black tracking-wider uppercase">POSTERIOR CHAIN</text>
-                  <text x="2" y="22" className="fill-indigo-400/60 text-[2.0px] font-mono font-bold tracking-wider uppercase">BACK METRICS</text>
-                </motion.g>
+                  {/* Card 3: Arms */}
+                  {(() => {
+                    const score = muscleGroupsProgress["arms"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "arms";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("arms")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/arms.png" alt="arms" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Arms</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
-                {/* Ground Target Metrics */}
-                <g className="pointer-events-none opacity-40">
-                  <line x1="20" y1="192" x2="80" y2="192" className="stroke-cyan-500/40" strokeWidth="0.8" />
-                  <ellipse cx="50" cy="192" rx="32" ry="4" className="stroke-cyan-500/20 fill-none" strokeWidth="0.8" />
-                </g>
-              </svg>
+                  {/* Card 4: Legs */}
+                  {(() => {
+                    const score = muscleGroupsProgress["legs"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "legs";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("legs")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/legs.png" alt="legs" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Legs</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Center: Interactive Humanoid Map */}
+                <div className="relative w-[130px] h-[260px] flex items-center justify-center">
+                  <BodyPartVectorMap
+                    selectedPart={null}
+                    hoveredPart={hoveredZone}
+                    onHoverPart={(part) => {
+                      if (!isScanning) {
+                        if (part === "Head") setHoveredZone("head");
+                        else if (part === "Shoulders") setHoveredZone("shoulders");
+                        else if (part === "Chest") setHoveredZone("chest");
+                        else if (part === "Back") setHoveredZone("back");
+                        else if (part === "Core") setHoveredZone("abs");
+                        else if (part === "Arms") setHoveredZone("arms");
+                        else if (part === "Legs") setHoveredZone("legs");
+                        else setHoveredZone(null);
+                      }
+                    }}
+                    interactive={!isScanning}
+                    size="large"
+                    pulseActive={isScanning}
+                    className="scale-[1.1]"
+                    completedParts={isPeakMentalPowerActive ? completedParts : []}
+                    headGlowColor={isPeakMentalPowerActive ? "#a855f7" : undefined}
+                  />
+                </div>
+
+                {/* Right Side Callouts */}
+                <div className="w-[95px] flex flex-col justify-between h-[220px] py-1">
+                  {/* Card 5: Back */}
+                  {(() => {
+                    const score = muscleGroupsProgress["back"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "back";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("back")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/back.png" alt="back" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Back</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Card 6: Chest */}
+                  {(() => {
+                    const score = muscleGroupsProgress["chest"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "chest";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("chest")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/chest.png" alt="chest" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Chest</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Card 7: Abs / Core */}
+                  {(() => {
+                    const score = muscleGroupsProgress["abs"] || 0;
+                    const status = getMuscleColor(score);
+                    const isHovered = hoveredZone === "abs";
+                    return (
+                      <div
+                        onMouseEnter={() => !isScanning && setHoveredZone("abs")}
+                        onMouseLeave={() => setHoveredZone(null)}
+                        className={`rounded-lg border p-1 bg-slate-955/85 backdrop-blur-sm cursor-pointer transition-all duration-300 ${
+                          isHovered 
+                            ? "border-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.4)] scale-105" 
+                            : isScanning 
+                              ? "border-slate-900 opacity-20" 
+                              : "border-slate-850 hover:border-slate-750"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <img src="/assets/icons/abs.png" alt="abs" className="h-4 w-4 object-contain" style={{ mixBlendMode: "screen" }} />
+                          <span className="text-[7px] font-black tracking-wider text-slate-500 uppercase">Core</span>
+                        </div>
+                        <div className="mt-0.5 flex justify-between items-center px-0.5">
+                          <span className={`text-[9px] font-mono font-black ${status.text}`}>{score}%</span>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.stroke }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+              </div>
             </div>
 
             {/* Context-Aware Diagnostics Telemetry Terminal */}
@@ -871,19 +1038,29 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -5 }}
-                      className="space-y-1"
+                      className="flex items-center gap-3"
                     >
-                      <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5 text-purple-405">
-                        <Brain className="h-3.5 w-3.5" /> Brain/Head Telemetry Diagnostics
-                      </p>
-                      <p className="text-xs text-slate-350">
-                        Mental Capacity: <span className="font-black text-white">{isPeakMentalPowerActive ? "PEAK PERFORMANCE" : "NORMAL OUTPUT"}</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        {isPeakMentalPowerActive
-                          ? "🔮 Peak performance active. Your brain node is illuminated with purple electric currents."
-                          : "💤 Normal capacity. Log an exam score above 80% to trigger peak performance."}
-                      </p>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950/80 border border-slate-800 p-1 overflow-hidden">
+                        <img
+                          src="/assets/icons/brain.png"
+                          alt="brain"
+                          className="h-10 w-10 object-contain"
+                          style={{ mixBlendMode: "screen" }}
+                        />
+                      </div>
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5 text-purple-400">
+                          <Brain className="h-3.5 w-3.5" /> Brain/Head Diagnostics
+                        </p>
+                        <p className="text-[11px] text-slate-300 font-bold">
+                          Mental Capacity: <span className="font-black text-white">{isPeakMentalPowerActive ? "PEAK PERFORMANCE" : "NORMAL OUTPUT"}</span>
+                        </p>
+                        <p className="text-[9px] text-slate-450 leading-relaxed">
+                          {isPeakMentalPowerActive
+                            ? "🔮 Peak performance active. Your brain node is illuminated with purple electric currents."
+                            : "💤 Normal capacity. Log an exam score above 90% in main exam to trigger peak performance."}
+                        </p>
+                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -891,22 +1068,32 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -5 }}
-                      className="space-y-1"
+                      className="flex items-center gap-3"
                     >
-                      <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5" style={{ color: getMuscleColor(muscleGroupsProgress[hoveredZone]).stroke }}>
-                        <Dumbbell className="h-3.5 w-3.5" /> {hoveredZone} Telemetry Diagnostics
-                      </p>
-                      <p className="text-xs text-slate-350">
-                        Weekly Completion: <span className="font-black text-white">{muscleGroupsProgress[hoveredZone]}%</span>
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-medium">
-                        {muscleGroupsProgress[hoveredZone] < 50
-                          ? "⚠️ Underdeveloped area. Increase weekly target sets to improve status."
-                          : muscleGroupsProgress[hoveredZone] <= 70
-                            ? "🟡 Acceptable output. Steady work completed."
-                            : "🟢 High-level execution! Muscle group fully stimulated."
-                        }
-                      </p>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950/80 border border-slate-800 p-1 overflow-hidden">
+                        <img
+                          src={`/assets/icons/${hoveredZone}.png`}
+                          alt={hoveredZone}
+                          className="h-10 w-10 object-contain"
+                          style={{ mixBlendMode: "screen" }}
+                        />
+                      </div>
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <p className="text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5" style={{ color: getMuscleColor(muscleGroupsProgress[hoveredZone]).stroke }}>
+                          <Dumbbell className="h-3.5 w-3.5" /> {hoveredZone} Diagnostics
+                        </p>
+                        <p className="text-[11px] text-slate-300 font-bold">
+                          Weekly Completion: <span className="font-black text-white">{muscleGroupsProgress[hoveredZone]}%</span>
+                        </p>
+                        <p className="text-[9px] text-slate-450 leading-relaxed">
+                          {muscleGroupsProgress[hoveredZone] < 50
+                            ? "⚠️ Underdeveloped area. Increase weekly target sets to improve status."
+                            : muscleGroupsProgress[hoveredZone] <= 70
+                              ? "🟡 Acceptable output. Steady work completed."
+                              : "🟢 High-level execution! Muscle group fully stimulated."
+                          }
+                        </p>
+                      </div>
                     </motion.div>
                   )
                 ) : (
@@ -914,31 +1101,16 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                     key="summary"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="space-y-2"
+                    className="space-y-1.5 text-center py-0.5"
                   >
-                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center">
-                      Weekly Muscle Diagnostics Matrix
+                    <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest animate-pulse flex items-center justify-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-cyan-400 shrink-0" /> SYSTEM TELEMETRY ONLINE
                     </p>
-                    <div className="grid grid-cols-5 gap-1.5 text-center">
-                      {["chest", "legs", "back", "arms", "abs"].map((m) => {
-                        const score = muscleGroupsProgress[m];
-                        const status = getMuscleColor(score);
-                        return (
-                          <div key={m} className="bg-slate-955 border border-slate-900 p-1.5 rounded-lg">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase block">{m}</span>
-                            <span className={`text-xs font-black ${status.text} block mt-0.5`}>{score}%</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {isPeakMentalPowerActive && (
-                      <div className="mt-2 text-center bg-purple-950/40 border border-purple-900/40 px-2.5 py-1.5 rounded-xl shadow-[0_0_10px_rgba(168,85,247,0.15)] flex items-center justify-center gap-1.5">
-                        <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-                        <span className="text-[9px] font-black text-purple-300 uppercase tracking-wider font-sans">
-                          BRAIN IN PEAK PERFORMANCE
-                        </span>
-                      </div>
-                    )}
+                    <p className="text-[9px] text-slate-400 font-semibold max-w-[320px] mx-auto leading-relaxed">
+                      {isPeakMentalPowerActive 
+                        ? "🔮 Neural core at peak performance. Interactive mapping synced with weekly exercise status. Select a node to query detailed telemetry."
+                        : "🔗 Local biomechanical bridge active. Hover or click specific nodes on the humanoid matrix to run diagnostics."}
+                    </p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1105,10 +1277,10 @@ export function DashboardModule({ points, accentColor, weight: propWeight, heigh
                     {task.title}
                   </p>
                   <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
-                      ? "bg-rose-950/50 border-rose-900 text-rose-350"
-                      : task.priority === "medium"
-                        ? "bg-amber-950/50 border-amber-900 text-amber-350"
-                        : "bg-slate-900 border-slate-800 text-slate-400"
+                    ? "bg-rose-950/50 border-rose-900 text-rose-350"
+                    : task.priority === "medium"
+                      ? "bg-amber-950/50 border-amber-900 text-amber-350"
+                      : "bg-slate-900 border-slate-800 text-slate-400"
                     }`}>
                     {task.priority}
                   </span>

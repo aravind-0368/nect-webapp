@@ -304,7 +304,7 @@ export function LearningModule() {
     const finalGainedMarks = gainedMarks;
 
     const scorePct = finalTotalMarks > 0 ? Math.round((finalGainedMarks / finalTotalMarks) * 100) : 0;
-    if (scorePct > 80) {
+    if (isMain && scorePct > 90) {
       triggerPeakMentalPower();
     }
 
@@ -343,7 +343,11 @@ export function LearningModule() {
       const pointsEarned = Math.round(scorePct * 1.5);
       awardPoints(pointsEarned, "Learning");
 
-      setNotification(`Exam '${examTitle}' registered. +${pointsEarned} XP awarded.`);
+      if (isMain && scorePct > 90) {
+        setNotification(`Peak Performance achieved! Exam '${examTitle}' logged. +${pointsEarned} XP. Brain node glowing purple for 2 days!`);
+      } else {
+        setNotification(`Exam '${examTitle}' registered. +${pointsEarned} XP awarded.`);
+      }
     }
 
     // Reset form states
