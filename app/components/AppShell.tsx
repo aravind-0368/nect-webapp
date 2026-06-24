@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Settings,
   LayoutDashboard,
@@ -44,6 +44,13 @@ const initialModules: ModuleKey[] = [
   "Tasks",
 ];
 
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : "255, 255, 255";
+}
+
 export function AppShell({ onLogout }: AppShellProps) {
   const [activeModule, setActiveModule] = useState<ModuleKey>("Dashboard");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,9 +64,68 @@ export function AppShell({ onLogout }: AppShellProps) {
     visibleModules
   } = useNectStore();
 
-  // Lifted state from ExerciseModule for sharing with FoodModule
-  const [weight, setWeight] = useState(75);
-  const [height, setHeight] = useState(180);
+  // Lifted states for sharing across modules
+  const [weight, setWeight] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_weight");
+      return saved ? Number(saved) : 75;
+    }
+    return 75;
+  });
+  const [height, setHeight] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_height");
+      return saved ? Number(saved) : 180;
+    }
+    return 180;
+  });
+  const [age, setAge] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_age");
+      return saved ? Number(saved) : 25;
+    }
+    return 25;
+  });
+  const [biologicalSex, setBiologicalSex] = useState<"Men" | "Women">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_sex");
+      return (saved as "Men" | "Women") || "Men";
+    }
+    return "Men";
+  });
+  const [activityMultiplier, setActivityMultiplier] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_activity");
+      return (saved as "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") || "Moderately Active";
+    }
+    return "Moderately Active";
+  });
+  const [proteinActivityFactor, setProteinActivityFactor] = useState<"Sedentary" | "Active" | "Strength">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_protein_factor");
+      return (saved as "Sedentary" | "Active" | "Strength") || "Strength";
+    }
+    return "Strength";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_weight", String(weight));
+  }, [weight]);
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_height", String(height));
+  }, [height]);
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_age", String(age));
+  }, [age]);
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_sex", biologicalSex);
+  }, [biologicalSex]);
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_activity", activityMultiplier);
+  }, [activityMultiplier]);
+  useEffect(() => {
+    localStorage.setItem("nect_telemetry_protein_factor", proteinActivityFactor);
+  }, [proteinActivityFactor]);
 
   const accentColor = useMemo(() => {
     if (lockRankTheme) {
@@ -73,7 +139,13 @@ export function AppShell({ onLogout }: AppShellProps) {
   return (
     <main
       className="min-h-screen bg-[#070814] text-slate-100"
-      style={{ "--rank-accent": accentColor } as CSSProperties}
+      style={{
+        "--rank-accent": accentColor,
+        "--rank-accent-rgb": hexToRgb(accentColor),
+        "--rank-accent-glow": `0 0 24px ${accentColor}2d`,
+        "--rank-accent-glow-strong": `0 0 24px ${accentColor}40`,
+        "--rank-accent-glow-subtle": `0 0 28px ${accentColor}1a`,
+      } as CSSProperties}
     >
       <div className="fixed inset-0 -z-10">
         <div className="absolute left-10 top-24 h-80 w-80 rounded-full bg-purple-700/20 blur-3xl" />
@@ -106,7 +178,7 @@ export function AppShell({ onLogout }: AppShellProps) {
                   type="button"
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
                     activeModule === module
-                      ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+                      ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow)]"
                       : "border-slate-800 bg-slate-900/55 text-slate-300 hover:border-slate-600 hover:text-white"
                   }`}
                   onClick={() => {
@@ -145,6 +217,14 @@ export function AppShell({ onLogout }: AppShellProps) {
           setWeight={setWeight}
           height={height}
           setHeight={setHeight}
+          age={age}
+          setAge={setAge}
+          biologicalSex={biologicalSex}
+          setBiologicalSex={setBiologicalSex}
+          activityMultiplier={activityMultiplier}
+          setActivityMultiplier={setActivityMultiplier}
+          proteinActivityFactor={proteinActivityFactor}
+          setProteinActivityFactor={setProteinActivityFactor}
         />
       </div>
 
@@ -168,6 +248,14 @@ function ModuleWorkspace({
   setWeight,
   height,
   setHeight,
+  age,
+  setAge,
+  biologicalSex,
+  setBiologicalSex,
+  activityMultiplier,
+  setActivityMultiplier,
+  proteinActivityFactor,
+  setProteinActivityFactor,
 }: {
   activeModule: ModuleKey;
   accentColor: string;
@@ -175,7 +263,17 @@ function ModuleWorkspace({
   setWeight: (w: number) => void;
   height: number;
   setHeight: (h: number) => void;
+  age: number;
+  setAge: (a: number) => void;
+  biologicalSex: "Men" | "Women";
+  setBiologicalSex: (s: "Men" | "Women") => void;
+  activityMultiplier: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
+  setActivityMultiplier: (m: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") => void;
+  proteinActivityFactor: "Sedentary" | "Active" | "Strength";
+  setProteinActivityFactor: (f: "Sedentary" | "Active" | "Strength") => void;
 }) {
+  const points = useNectStore((state) => state.points);
+
   if (activeModule === "Workout") {
     return (
       <ExerciseModule
@@ -183,6 +281,14 @@ function ModuleWorkspace({
         setWeight={setWeight}
         height={height}
         setHeight={setHeight}
+        age={age}
+        setAge={setAge}
+        biologicalSex={biologicalSex}
+        setBiologicalSex={setBiologicalSex}
+        activityMultiplier={activityMultiplier}
+        setActivityMultiplier={setActivityMultiplier}
+        proteinActivityFactor={proteinActivityFactor}
+        setProteinActivityFactor={setProteinActivityFactor}
       />
     );
   }
@@ -194,6 +300,14 @@ function ModuleWorkspace({
         setWeight={setWeight}
         height={height}
         setHeight={setHeight}
+        age={age}
+        setAge={setAge}
+        biologicalSex={biologicalSex}
+        setBiologicalSex={setBiologicalSex}
+        activityMultiplier={activityMultiplier}
+        setActivityMultiplier={setActivityMultiplier}
+        proteinActivityFactor={proteinActivityFactor}
+        setProteinActivityFactor={setProteinActivityFactor}
       />
     );
   }
@@ -212,10 +326,14 @@ function ModuleWorkspace({
 
   return (
     <DashboardModule
-      points={useNectStore.getState().points}
+      points={points}
       accentColor={accentColor}
       weight={weight}
       height={height}
+      age={age}
+      biologicalSex={biologicalSex}
+      activityMultiplier={activityMultiplier}
+      proteinActivityFactor={proteinActivityFactor}
     />
   );
 }

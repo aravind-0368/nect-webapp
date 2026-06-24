@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { BookOpen, Plus, Clock, Award, Star, Trash2, Calendar, Radio, Lamp, RotateCcw, GraduationCap, Pencil } from "lucide-react";
+import { BookOpen, Plus, Clock, Award, Star, Trash2, Calendar, Radio, Lamp, RotateCcw, GraduationCap, Pencil, Flame } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { motion } from "framer-motion";
 import { useNectStore } from "../store/useNectStore";
@@ -89,7 +89,7 @@ export function LearningModule() {
   const [sessions, setSessions] = useState<StudySession[]>(initialSessions);
   const [revisions, setRevisions] = useState<RevisionSubject[]>(initialRevisions);
   const [exams, setExams] = useState<ExamRecord[]>(initialExams);
-  
+
   // Zustand hook
   const {
     smartStreak,
@@ -105,10 +105,23 @@ export function LearningModule() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const lastDate = localStorage.getItem("nect_learning_last_date");
+
+      let loadedSessions = initialSessions;
       const storedSessions = localStorage.getItem("nect_learning_sessions");
+      if (storedSessions) loadedSessions = JSON.parse(storedSessions);
+
+      if (lastDate !== todayStr) {
+        loadedSessions = [];
+        localStorage.setItem("nect_learning_last_date", todayStr);
+        localStorage.setItem("nect_learning_sessions", JSON.stringify([]));
+      }
+
+      setSessions(loadedSessions);
+
       const storedRevisions = localStorage.getItem("nect_learning_revisions");
       const storedExams = localStorage.getItem("nect_learning_exams");
-      if (storedSessions) setSessions(JSON.parse(storedSessions));
       if (storedRevisions) setRevisions(JSON.parse(storedRevisions));
       if (storedExams) setExams(JSON.parse(storedExams));
       setIsLoaded(true);
@@ -208,6 +221,8 @@ export function LearningModule() {
     };
   }, [sessions]);
 
+  const completedRevisions = useMemo(() => revisions.filter((r) => r.checked).length, [revisions]);
+
   // Check if all revisions are checked
   const allRevisionsChecked = useMemo(() => {
     return revisions.length > 0 && revisions.every((r) => r.checked);
@@ -218,22 +233,33 @@ export function LearningModule() {
     e.preventDefault();
     if (!studySubject.trim()) return;
 
+    const dayIndex = new Date().getDay();
+    const dayNamesMapping: DayName[] = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const todayDayName = dayNamesMapping[dayIndex];
+
     const newSession: StudySession = {
       id: Date.now(),
       subject: studySubject,
       hours: studyHours,
       minutes: studyMinutes,
-      day: studyDay,
+      day: todayDayName,
     };
 
     setSessions((curr) => [...curr, newSession]);
     setStudySubject("");
     setStudyHours(1);
     setStudyMinutes(0);
-    
+
     // Award 40 XP for logging a study session
     awardPoints(40, "Learning");
-    setNotification(`Logged ${studyHours}h ${studyMinutes}m study session. +40 XP awarded.`);
   }
 
   function handleDeleteSession(id: number) {
@@ -290,10 +316,7 @@ export function LearningModule() {
     }, 3000);
   }
 
-  function handleDecayStreak() {
-    decaySmartStreak();
-    setNotification("Revision cycle missed. Tome Streak decayed back to 0.");
-  }
+
 
   // Handlers - Exam Hub
   function handleSaveExam(e: FormEvent) {
@@ -304,7 +327,10 @@ export function LearningModule() {
     const finalGainedMarks = gainedMarks;
 
     const scorePct = finalTotalMarks > 0 ? Math.round((finalGainedMarks / finalTotalMarks) * 100) : 0;
-    if (isMain && scorePct > 90) {
+    if (isMain) {
+      useNectStore.getState().setLastMainExam(Date.now(), scorePct, examTitle);
+    }
+    if (isMain && scorePct > 80) {
       triggerPeakMentalPower();
     }
 
@@ -314,13 +340,13 @@ export function LearningModule() {
         curr.map((item) =>
           item.id === editingExamId
             ? {
-                ...item,
-                title: examTitle,
-                isMain,
-                totalMarks: finalTotalMarks,
-                gainedMarks: finalGainedMarks,
-                date: examDate || undefined,
-              }
+              ...item,
+              title: examTitle,
+              isMain,
+              totalMarks: finalTotalMarks,
+              gainedMarks: finalGainedMarks,
+              date: examDate || undefined,
+            }
             : item
         )
       );
@@ -343,7 +369,7 @@ export function LearningModule() {
       const pointsEarned = Math.round(scorePct * 1.5);
       awardPoints(pointsEarned, "Learning");
 
-      if (isMain && scorePct > 90) {
+      if (isMain && scorePct > 80) {
         setNotification(`Peak Performance achieved! Exam '${examTitle}' logged. +${pointsEarned} XP. Brain node glowing purple for 2 days!`);
       } else {
         setNotification(`Exam '${examTitle}' registered. +${pointsEarned} XP awarded.`);
@@ -365,7 +391,7 @@ export function LearningModule() {
     setGainedMarks(exam.gainedMarks);
     setExamDate(exam.date || "");
     setIsMain(exam.isMain);
-    
+
     // Scroll form into view
     const formElement = document.getElementById("exam-record-form");
     if (formElement) {
@@ -447,63 +473,58 @@ export function LearningModule() {
         {/* Left header box */}
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-between">
           <div>
-            <div className="flex flex-wrap items-center gap-4">
-              
-              {/* Category icon wrapped in PowerUpBoost */}
-              <PowerUpBoost moduleKey="Learning">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.2)]">
-                  <Award className="h-11 w-11 text-[var(--rank-accent)] filter drop-shadow-[0_0_8px_rgba(34,211,238,0.6)] animate-pulse" />
-                </div>
-              </PowerUpBoost>
+            <div className="flex flex-col items-center md:items-start text-center md:text-left shrink-0">
+              <h1 className="text-3xl font-black text-white uppercase tracking-wider">
+                Study Hall
+              </h1>
+              <span className="text-[10px] font-black tracking-[0.2em] text-[var(--rank-accent)] mt-1.5 uppercase">
+                Focus your mind
+              </span>
+            </div>
 
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-                  Learning Module
-                </p>
-                <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
-                  STUDY HUB
-                </h1>
+            {/* Dynamic Telemetry / Status Row */}
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 border-t border-slate-800/80">
+              {/* Streak Indicator */}
+              <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+                <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+                  <Flame className="h-5 w-5 animate-pulse" style={{ color: "var(--rank-accent)" }} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Study Streak</p>
+                  <p className="text-sm font-black text-white">{smartStreak} Days</p>
+                </div>
+              </div>
+
+              {/* Study Hours Indicator */}
+              <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+                <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+                  <Clock className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Study Hours</p>
+                  <p className="text-sm font-black text-white">{studyMetrics.totalHours.toFixed(1)} hrs</p>
+                </div>
+              </div>
+
+              {/* Revisions Indicator */}
+              <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+                <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+                  <RotateCcw className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Revisions</p>
+                  <p className="text-sm font-black text-white">{completedRevisions} / {revisions.length}</p>
+                </div>
               </div>
             </div>
 
-            {/* Streak & notification badges */}
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              {/* FireStreak Component */}
-              <FireStreak streakValue={smartStreak} streakType="Smart" />
-
-              {notification && (
-                <span className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-sm font-semibold text-[var(--rank-accent)]">
-                  {notification}
-                </span>
-              )}
-            </div>
+            {notification && (
+              <div className="mt-4 rounded-xl border border-[var(--rank-accent)]/20 bg-[var(--rank-accent)]/5 px-4 py-2 text-xs font-bold text-[var(--rank-accent)] w-fit">
+                {notification}
+              </div>
+            )}
           </div>
 
-          {/* Sub-module View Toggles */}
-          <div className="mt-6 inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1 w-fit">
-            {[
-              { id: "table" as const, label: "Study Table", icon: Lamp },
-              { id: "vault" as const, label: "Revision Vault", icon: RotateCcw },
-              { id: "hub" as const, label: "Exam Hub", icon: GraduationCap },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${
-                    activeTab === tab.id
-                      ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* Right header widget: High-Stakes Telemetry Countdown Tag */}
@@ -514,11 +535,10 @@ export function LearningModule() {
           <div className="mt-4">
             {nearestMainExam ? (
               <div
-                className={`rounded-xl border p-4 transition-all duration-350 ${
-                  nearestMainExam.daysLeft < 10
+                className={`rounded-xl border p-4 transition-all duration-350 ${nearestMainExam.daysLeft < 10
                     ? "border-rose-500/40 bg-rose-500/10 text-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.15)] animate-pulse"
                     : "border-indigo-500/25 bg-indigo-500/10 text-indigo-300"
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
@@ -563,6 +583,33 @@ export function LearningModule() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex justify-start">
+        <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1 w-fit">
+          {[
+            { id: "table" as const, label: "Study Table", icon: Lamp },
+            { id: "vault" as const, label: "Revision Vault", icon: RotateCcw },
+            { id: "hub" as const, label: "Exam Hub", icon: GraduationCap },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeTab === tab.id
+                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
+                    : "text-slate-400 hover:text-white"
+                  }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -624,29 +671,12 @@ export function LearningModule() {
                         />
                       </label>
                     </div>
-
-                    <label className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Select Day
-                      </span>
-                      <select
-                        className={fieldClass}
-                        value={studyDay}
-                        onChange={(e) => setStudyDay(e.target.value as DayName)}
-                      >
-                        {daysOfWeek.map((day) => (
-                          <option key={day} value={day}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="mt-6 w-full rounded-xl bg-indigo-650 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 hover:bg-indigo-600 active:scale-95 cursor-pointer"
+                  className="mt-6 w-full rounded-xl bg-indigo-950/40 border border-indigo-550/30 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 hover:bg-indigo-900/50 active:scale-95 cursor-pointer"
                 >
                   Add Study Session
                 </button>
@@ -702,7 +732,7 @@ export function LearningModule() {
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-              <h3 className="text-lg font-black text-white mb-4">Logged Study Ledger</h3>
+              <h3 className="text-lg font-black text-white mb-4">Logged Study</h3>
               {sessions.length === 0 ? (
                 <p className="text-sm text-slate-500">No sessions recorded yet.</p>
               ) : (
@@ -742,10 +772,7 @@ export function LearningModule() {
               onSubmit={handleAddRevision}
               className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5"
             >
-              <h3 className="text-lg font-black text-white">Vault subjects registry</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Manually stack study targets into the active recall revision queue
-              </p>
+              <h3 className="text-lg font-black text-white">Add Revision subjects</h3>
               <div className="mt-4 flex gap-3">
                 <input
                   className={`${fieldClass} flex-1`}
@@ -767,18 +794,8 @@ export function LearningModule() {
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5 border-b border-slate-800/80 pb-4">
                 <div>
                   <h3 className="text-xl font-black text-white">Active Recall Board</h3>
-                  <p className="text-xs text-slate-405">
-                    Complete all items to award +50 points and secure your Tome Streak
-                  </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
-                    onClick={handleDecayStreak}
-                  >
-                    Simulate Missed Day
-                  </button>
                   {allRevisionsChecked && (
                     <button
                       type="button"
@@ -803,11 +820,10 @@ export function LearningModule() {
                       key={rev.id}
                       animate={rev.checked ? { scale: [1, 1.05, 1] } : {}}
                       transition={{ duration: 0.2 }}
-                      className={`relative rounded-xl border p-4 transition-all duration-300 ${
-                        rev.checked
+                      className={`relative rounded-xl border p-4 transition-all duration-300 ${rev.checked
                           ? "border-emerald-500/30 bg-emerald-950/5 opacity-55 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                           : "border-slate-800 bg-slate-900/40 hover:border-slate-705"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <label className="flex cursor-pointer items-center justify-center w-5 h-5 rounded border border-slate-700 bg-slate-950 transition-transform active:scale-90">
@@ -819,9 +835,8 @@ export function LearningModule() {
                           />
                         </label>
                         <span
-                          className={`text-sm font-bold truncate pr-6 text-slate-205 ${
-                            rev.checked ? "line-through text-slate-500" : ""
-                          }`}
+                          className={`text-sm font-bold truncate pr-6 text-slate-205 ${rev.checked ? "line-through text-slate-500" : ""
+                            }`}
                         >
                           {rev.name}
                         </span>
@@ -937,7 +952,7 @@ export function LearningModule() {
                 <div className="flex flex-col gap-2 mt-6">
                   <button
                     type="submit"
-                    className="w-full rounded-xl bg-indigo-650 hover:bg-indigo-600 py-3 text-xs font-black uppercase tracking-wider text-white transition-colors cursor-pointer active:scale-[0.97]"
+                    className="w-full rounded-xl bg-indigo-950/40 border border-indigo-550/30 hover:bg-indigo-900/50 py-3 text-xs font-black uppercase tracking-wider text-white transition-all cursor-pointer active:scale-[0.97]"
                   >
                     {editingExamId !== null ? "Update Exam Record" : "Register Exam"}
                   </button>
@@ -1016,22 +1031,20 @@ export function LearningModule() {
                     return (
                       <div
                         key={e.id}
-                        className={`rounded-xl border p-4 flex items-center justify-between transition-all duration-300 ${
-                          e.isMain
+                        className={`rounded-xl border p-4 flex items-center justify-between transition-all duration-300 ${e.isMain
                             ? isUpcomingMain
                               ? "border-purple-500 bg-purple-950/25 shadow-[0_0_15px_rgba(168,85,247,0.22)] animate-pulse"
                               : "border-purple-500/30 bg-purple-950/5 hover:border-purple-500/50 hover:shadow-[0_0_15px_rgba(168,85,247,0.06)]"
                             : "border-amber-500/25 bg-amber-950/5 hover:border-amber-500/45 hover:shadow-[0_0_15px_rgba(245,158,11,0.06)]"
-                        }`}
+                          }`}
                       >
                         <div>
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded flex items-center gap-1 w-fit transition-all duration-300 ${
-                            e.isMain
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded flex items-center gap-1 w-fit transition-all duration-300 ${e.isMain
                               ? isUpcomingMain
                                 ? "bg-purple-500/25 text-purple-300 border border-purple-500/35 shadow-[0_0_10px_rgba(168,85,247,0.45)]"
                                 : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
                               : "bg-amber-500/10 text-amber-450 border border-amber-500/20"
-                          }`}>
+                            }`}>
                             {e.isMain ? (
                               <>
                                 <Calendar className="h-2.5 w-2.5" />

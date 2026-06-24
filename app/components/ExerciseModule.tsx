@@ -2,12 +2,11 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { Flame, Hourglass, Layers, Milestone } from "lucide-react";
+import { Flame, Hourglass, Layers, Milestone, Scale, Ruler, Activity, User, Check } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNectStore } from "../store/useNectStore";
 import { FireStreak } from "./FireStreak";
 import { PowerUpBoost } from "./PowerUpBoost";
-import { BodyPartVectorMap } from "./BodyPartVectorMap";
 
 type DayName =
   | "Monday"
@@ -26,6 +25,7 @@ type WorkoutItem = {
   reps: number;
   sets: number;
   checkedSets: boolean[];
+  completed?: boolean;
 };
 
 const days: DayName[] = [
@@ -107,18 +107,41 @@ const getBodyPartIcon = (part: string) => {
   return bodyPartIcons[normalized] || "/assets/icons/exercise.png";
 };
 
+const isWorkoutCompleted = (item: WorkoutItem) => {
+  if (item.completed !== undefined) {
+    return item.completed;
+  }
+  return item.checkedSets ? item.checkedSets.every(Boolean) : false;
+};
+
 export function ExerciseModule({
   weight: propWeight,
   setWeight: propSetWeight,
   height: propHeight,
   setHeight: propSetHeight,
+  age: propAge,
+  setAge: propSetAge,
+  biologicalSex: propSex,
+  setBiologicalSex: propSetSex,
+  activityMultiplier: propActivity,
+  setActivityMultiplier: propSetActivity,
+  proteinActivityFactor: propProteinFactor,
+  setProteinActivityFactor: propSetProteinFactor,
 }: {
   weight?: number;
   setWeight?: (w: number) => void;
   height?: number;
   setHeight?: (h: number) => void;
+  age?: number;
+  setAge?: (a: number) => void;
+  biologicalSex?: "Men" | "Women";
+  setBiologicalSex?: (s: "Men" | "Women") => void;
+  activityMultiplier?: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
+  setActivityMultiplier?: (m: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") => void;
+  proteinActivityFactor?: "Sedentary" | "Active" | "Strength";
+  setProteinActivityFactor?: (f: "Sedentary" | "Active" | "Strength") => void;
 } = {}) {
-  const [activeView, setActiveView] = useState<"today" | "weekly">("today");
+  const [activeView, setActiveView] = useState<"today" | "weekly" | "profile">("today");
   const [selectedDay, setSelectedDay] = useState<DayName>(todayName);
   const [restDays, setRestDays] = useState<Record<DayName, boolean>>({
     Monday: false,
@@ -167,11 +190,23 @@ export function ExerciseModule({
   const [sets, setSets] = useState(3);
   const [internalWeight, setInternalWeight] = useState(75);
   const [internalHeight, setInternalHeight] = useState(180);
+  const [internalAge, setInternalAge] = useState(25);
+  const [internalSex, setInternalSex] = useState<"Men" | "Women">("Men");
+  const [internalActivity, setInternalActivity] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">("Moderately Active");
+  const [internalProteinFactor, setInternalProteinFactor] = useState<"Sedentary" | "Active" | "Strength">("Strength");
 
   const weight = propWeight !== undefined ? propWeight : internalWeight;
   const setWeight = propSetWeight !== undefined ? propSetWeight : setInternalWeight;
   const height = propHeight !== undefined ? propHeight : internalHeight;
   const setHeight = propSetHeight !== undefined ? propSetHeight : setInternalHeight;
+  const age = propAge !== undefined ? propAge : internalAge;
+  const setAge = propSetAge !== undefined ? propSetAge : setInternalAge;
+  const biologicalSex = propSex !== undefined ? propSex : internalSex;
+  const setBiologicalSex = propSetSex !== undefined ? propSetSex : setInternalSex;
+  const activityMultiplier = propActivity !== undefined ? propActivity : internalActivity;
+  const setActivityMultiplier = propSetActivity !== undefined ? propSetActivity : setInternalActivity;
+  const proteinActivityFactor = propProteinFactor !== undefined ? propProteinFactor : internalProteinFactor;
+  const setProteinActivityFactor = propSetProteinFactor !== undefined ? propSetProteinFactor : setInternalProteinFactor;
 
   const [rewardedDays, setRewardedDays] = useState<DayName[]>([]);
   const [notification, setNotification] = useState("");
@@ -228,13 +263,13 @@ export function ExerciseModule({
     );
   }
 
-  function toggleSet(itemId: number, setIndex: number) {
+  function toggleWorkoutCompleted(itemId: number) {
     let dayCompleted = false;
     let wasChecked = false;
 
     workoutItems.forEach((item) => {
       if (item.id === itemId) {
-        wasChecked = item.checkedSets[setIndex];
+        wasChecked = isWorkoutCompleted(item);
       }
     });
 
@@ -244,147 +279,191 @@ export function ExerciseModule({
           return item;
         }
 
-        const checkedSets = item.checkedSets.map((checked, index) =>
-          index === setIndex ? !checked : checked,
-        );
+        const isCompletedNow = !isWorkoutCompleted(item);
+        const checkedSets = item.checkedSets ? item.checkedSets.map(() => isCompletedNow) : Array.from({ length: item.sets }, () => isCompletedNow);
 
-        return { ...item, checkedSets };
+        return { ...item, completed: isCompletedNow, checkedSets };
       });
 
       dayCompleted =
         next.filter((item) => item.day === todayName).length > 0 &&
         next
           .filter((item) => item.day === todayName)
-          .every((item) => item.checkedSets.every(Boolean));
+          .every((item) => isWorkoutCompleted(item));
 
       return next;
     });
 
-    // Award +15 XP for individual set checklist items completed
     if (!wasChecked) {
-      awardPoints(15, "Workout");
+      awardPoints(50, "Workout"); // Award 50 XP for completing a workout movement
     }
 
     if (dayCompleted && !rewardedDays.includes(todayName)) {
       setRewardedDays((current) => [...current, todayName]);
       incrementPowerStreak();
       awardPoints(150, "Workout"); // +150 XP for completing the workout day
-      setNotification("Today's workout complete. Streak advanced.");
     }
   }
 
-  function skipActiveDay() {
-    if (isTodayRest) {
-      setNotification("Rest day detected. Your streak remains protected.");
-      return;
-    }
-
-    decayPowerStreak();
-    setNotification("Active workout skipped. Streak reset to 0.");
-  }
 
   return (
     <section className="space-y-6 animate-fade-in-up">
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
-          <div className="flex flex-wrap items-center gap-4">
-            
-            {/* Category icon with PowerUpBoost */}
-            <PowerUpBoost moduleKey="Workout">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
-                <Image
-                  src="/assets/icons/exercise.png"
-                  alt="Workout module icon"
-                  width={44}
-                  height={44}
-                  className="h-11 w-11 object-contain"
-                />
-              </div>
-            </PowerUpBoost>
-
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-                Workout Module
-              </p>
-              <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
-                WORKOUT
+      {/* Top Panel (Main Panel) */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center md:items-start text-center md:text-left shrink-0">
+              <h1 className="text-3xl font-black text-white uppercase tracking-wider">
+                Training Hub
               </h1>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            {/* Pulsing fire streak component */}
-            <FireStreak streakValue={powerStreak} streakType="Power" />
-            {notification && (
-              <span className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-sm font-semibold text-[var(--rank-accent)]">
-                {notification}
+              <span className="text-[10px] font-black tracking-[0.2em] text-[var(--rank-accent)] mt-1.5 uppercase">
+                Enter the grind
               </span>
-            )}
-          </div>
-
-          <div className="mt-6 inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
-            {[
-              { id: "today" as const, label: "Today's Workout", icon: Hourglass },
-              { id: "weekly" as const, label: "Weekly Plan", icon: Layers },
-            ].map((view) => {
-              const Icon = view.icon;
-              return (
-                <button
-                  key={view.id}
-                  type="button"
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${
-                    activeView === view.id
-                      ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
-                      : "text-slate-400 hover:text-white"
-                  }`}
-                  onClick={() => setActiveView(view.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{view.label}</span>
-                </button>
-              );
-            })}
+            </div>
           </div>
         </div>
 
-        <HealthTelemetry
-          bmi={bmi}
-          bmiMeta={bmiMeta}
-          height={height}
-          setHeight={setHeight}
-          setWeight={setWeight}
-          weight={weight}
-        />
+        {/* Dynamic Telemetry / Status Row */}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 pt-5 border-t border-slate-800/80">
+          {/* Streak Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Flame className="h-5 w-5 animate-pulse" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Power Streak</p>
+              <p className="text-sm font-black text-white">{powerStreak} Days</p>
+            </div>
+          </div>
+
+          {/* Weight Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Scale className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Weight</p>
+              <p className="text-sm font-black text-white">{weight} kg</p>
+            </div>
+          </div>
+
+          {/* Height Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Ruler className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Height</p>
+              <p className="text-sm font-black text-white">{height} cm</p>
+            </div>
+          </div>
+
+          {/* BMI Result Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Activity className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">BMI Result</p>
+              <p className="text-sm font-black text-white flex items-center gap-1.5 flex-wrap">
+                <span>{bmi.toFixed(1)}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${bmiMeta.className}`}>
+                  {bmiMeta.label}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {notification && (
+          <div className="mt-4 rounded-xl border border-[var(--rank-accent)]/20 bg-[var(--rank-accent)]/5 px-4 py-2 text-xs font-semibold text-[var(--rank-accent)] animate-fade-in">
+            {notification}
+          </div>
+        )}
       </div>
 
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
-        {activeView === "today" ? (
-          <TodayWorkoutView
-            isRestDay={isTodayRest}
-            items={todaysItems}
-            onSkipDay={skipActiveDay}
-            onToggleSet={toggleSet}
-            todayName={todayName}
-          />
-        ) : (
-          <WeeklyPlanView
-            bodyPart={bodyPart}
-            daySummaries={daySummaries}
-            exerciseName={exerciseName}
-            onAddWorkout={addWorkout}
-            onDeleteWorkout={deleteWorkout}
-            onSetBodyPart={setBodyPart}
-            onSetExerciseName={setExerciseName}
-            onSetReps={setReps}
-            onSetSelectedDay={setSelectedDay}
-            onSetSets={setSets}
-            onToggleRestDay={toggleRestDay}
-            reps={reps}
-            restDays={restDays}
-            selectedDay={selectedDay}
-            sets={sets}
-            workoutItems={workoutItems}
-          />
+      {/* Navigation Tabs (3 buttons: Today, Weekly plan, Body Profile) */}
+      <div className="flex justify-start">
+        <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
+          {[
+            { id: "today" as const, label: "Today", icon: Hourglass },
+            { id: "weekly" as const, label: "Weekly plan", icon: Layers },
+            { id: "profile" as const, label: "Body Profile", icon: User },
+          ].map((view) => {
+            const Icon = view.icon;
+            return (
+              <button
+                key={view.id}
+                type="button"
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeView === view.id
+                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
+                    : "text-slate-400 hover:text-white"
+                  }`}
+                onClick={() => setActiveView(view.id)}
+              >
+                <Icon className="h-3.5 w-3.5" style={{ color: "var(--rank-accent)" }} />
+                <span>{view.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div>
+        {activeView === "today" && (
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
+            <TodayWorkoutView
+              isRestDay={isTodayRest}
+              items={todaysItems}
+              onToggleWorkoutCompleted={toggleWorkoutCompleted}
+              todayName={todayName}
+            />
+          </div>
+        )}
+
+        {activeView === "weekly" && (
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
+            <WeeklyPlanView
+              bodyPart={bodyPart}
+              daySummaries={daySummaries}
+              exerciseName={exerciseName}
+              onAddWorkout={addWorkout}
+              onDeleteWorkout={deleteWorkout}
+              onSetBodyPart={setBodyPart}
+              onSetExerciseName={setExerciseName}
+              onSetReps={setReps}
+              onSetSelectedDay={setSelectedDay}
+              onSetSets={setSets}
+              onToggleRestDay={toggleRestDay}
+              reps={reps}
+              restDays={restDays}
+              selectedDay={selectedDay}
+              sets={sets}
+              workoutItems={workoutItems}
+            />
+          </div>
+        )}
+
+        {activeView === "profile" && (
+          <div className="max-w-2xl mx-auto">
+            <HealthTelemetry
+              bmi={bmi}
+              bmiMeta={bmiMeta}
+              height={height}
+              setHeight={setHeight}
+              setWeight={setWeight}
+              weight={weight}
+              age={age}
+              setAge={setAge}
+              biologicalSex={biologicalSex}
+              setBiologicalSex={setBiologicalSex}
+              activityMultiplier={activityMultiplier}
+              setActivityMultiplier={setActivityMultiplier}
+              proteinActivityFactor={proteinActivityFactor}
+              setProteinActivityFactor={setProteinActivityFactor}
+            />
+          </div>
         )}
       </div>
     </section>
@@ -398,6 +477,14 @@ function HealthTelemetry({
   setHeight,
   setWeight,
   weight,
+  age,
+  setAge,
+  biologicalSex,
+  setBiologicalSex,
+  activityMultiplier,
+  setActivityMultiplier,
+  proteinActivityFactor,
+  setProteinActivityFactor,
 }: {
   bmi: number;
   bmiMeta: { label: string; className: string };
@@ -405,36 +492,115 @@ function HealthTelemetry({
   setHeight: (value: number) => void;
   setWeight: (value: number) => void;
   weight: number;
+  age: number;
+  setAge: (value: number) => void;
+  biologicalSex: "Men" | "Women";
+  setBiologicalSex: (value: "Men" | "Women") => void;
+  activityMultiplier: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
+  setActivityMultiplier: (value: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") => void;
+  proteinActivityFactor: "Sedentary" | "Active" | "Strength";
+  setProteinActivityFactor: (value: "Sedentary" | "Active" | "Strength") => void;
 }) {
   return (
     <aside className="rounded-2xl border border-slate-800/80 bg-slate-900/45 p-6 backdrop-blur-sm">
       <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
-        Health Telemetry
+        Add Your Info
       </p>
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <label className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            Weight kg
-          </span>
-          <input
+      <div className="mt-5 space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Weight kg
+            </span>
+            <input
+              className={`${fieldClass} w-full`}
+              min={1}
+              type="number"
+              value={weight}
+              onChange={(event) => setWeight(Number(event.target.value))}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Height cm
+            </span>
+            <input
+              className={`${fieldClass} w-full`}
+              min={1}
+              type="number"
+              value={height}
+              onChange={(event) => setHeight(Number(event.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Age (Years)
+            </span>
+            <input
+              className={`${fieldClass} w-full`}
+              min={1}
+              type="number"
+              value={age}
+              onChange={(event) => setAge(Number(event.target.value))}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Biological Sex
+            </span>
+            <select
+              className={`${fieldClass} w-full`}
+              value={biologicalSex}
+              onChange={(event) => setBiologicalSex(event.target.value as "Men" | "Women")}
+            >
+              <option value="Men">Men</option>
+              <option value="Women">Women</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="block space-y-2">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Activity Level
+            </span>
+            <span className="text-xs text-slate-400 mt-0.5">
+              How active are you daily?
+            </span>
+          </div>
+          <select
             className={`${fieldClass} w-full`}
-            min={1}
-            type="number"
-            value={weight}
-            onChange={(event) => setWeight(Number(event.target.value))}
-          />
+            value={activityMultiplier}
+            onChange={(event) => setActivityMultiplier(event.target.value as any)}
+          >
+            <option value="Sedentary">Desk Job / Sedentary</option>
+            <option value="Lightly Active">Light Walking / On Your Feet</option>
+            <option value="Moderately Active">Workout 3–5 Times a Week</option>
+            <option value="Very Active">Heavy Daily Training / Hard Labor</option>
+          </select>
         </label>
-        <label className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            Height cm
-          </span>
-          <input
+
+        <label className="block space-y-2">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Protein Factor
+            </span>
+            <span className="text-xs text-slate-400 mt-0.5">
+              What is your primary training focus right now?
+            </span>
+          </div>
+          <select
             className={`${fieldClass} w-full`}
-            min={1}
-            type="number"
-            value={height}
-            onChange={(event) => setHeight(Number(event.target.value))}
-          />
+            value={proteinActivityFactor}
+            onChange={(event) => setProteinActivityFactor(event.target.value as any)}
+          >
+            <option value="Sedentary">General Health & Maintenance</option>
+            <option value="Active">Stamina & Endurance</option>
+            <option value="Strength">Build Muscle & Strength</option>
+          </select>
         </label>
       </div>
       <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
@@ -455,14 +621,12 @@ function HealthTelemetry({
 function TodayWorkoutView({
   isRestDay,
   items,
-  onSkipDay,
-  onToggleSet,
+  onToggleWorkoutCompleted,
   todayName,
 }: {
   isRestDay: boolean;
   items: WorkoutItem[];
-  onSkipDay: () => void;
-  onToggleSet: (itemId: number, setIndex: number) => void;
+  onToggleWorkoutCompleted: (itemId: number) => void;
   todayName: DayName;
 }) {
   if (isRestDay) {
@@ -490,16 +654,9 @@ function TodayWorkoutView({
             {todayName}
           </p>
           <h2 className="mt-2 text-2xl font-black text-white">
-            Today&apos;s Execution Checklist
+            Todays Workout
           </h2>
         </div>
-        <button
-          type="button"
-          className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200 transition-transform duration-100 active:scale-95 hover:bg-amber-500/20"
-          onClick={onSkipDay}
-        >
-          Skip Active Day
-        </button>
       </div>
 
       {items.length === 0 ? (
@@ -512,32 +669,30 @@ function TodayWorkoutView({
             <span>Exercise</span>
             <span>Reps</span>
             <span>Sets</span>
-            <span>Checklist Status Tracking</span>
+            <span>Status</span>
           </div>
           <div className="divide-y divide-slate-800">
             {items.map((item) => {
-              const isComplete = item.checkedSets.every(Boolean);
+              const isComplete = isWorkoutCompleted(item);
 
               return (
                 <div
                   key={item.id}
-                  className={`grid gap-4 bg-slate-950/35 px-4 py-4 transition-all duration-300 md:grid-cols-[1.4fr_0.5fr_0.5fr_1.5fr] items-center ${
-                    isComplete ? "opacity-60 bg-emerald-500/5" : "opacity-100"
-                  }`}
+                  className={`grid gap-4 bg-slate-950/35 px-4 py-4 transition-all duration-300 md:grid-cols-[1.4fr_0.5fr_0.5fr_1.5fr] items-center ${isComplete ? "opacity-60 bg-emerald-500/5" : "opacity-100"
+                    }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950/80 border border-slate-800 p-0.5 overflow-hidden">
-                      <BodyPartVectorMap
-                        selectedPart={item.bodyPart}
-                        interactive={false}
-                        size="small"
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950/80 border border-slate-800 p-1.5 overflow-hidden">
+                      <img
+                        src={getBodyPartIcon(item.bodyPart)}
+                        alt={item.bodyPart}
+                        className="h-8 w-8 object-contain"
                       />
                     </div>
                     <div>
                       <p
-                        className={`font-bold text-white transition-all duration-300 ${
-                          isComplete ? "text-slate-500 line-through" : ""
-                        }`}
+                        className={`font-bold text-white transition-all duration-300 ${isComplete ? "text-slate-500 line-through" : ""
+                          }`}
                       >
                         {item.name}
                       </p>
@@ -551,26 +706,19 @@ function TodayWorkoutView({
                     {item.sets}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {item.checkedSets.map((checked, index) => (
-                      <motion.label
-                        key={index}
-                        animate={checked ? { scale: [1, 1.15, 1] } : {}}
-                        transition={{ duration: 0.2 }}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition-all duration-200 active:scale-95 ${
-                          checked
-                            ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/10 text-white shadow-[0_0_10px_var(--rank-accent)]"
-                            : "border-slate-700 bg-slate-900/70 text-slate-300"
+                    <motion.button
+                      type="button"
+                      animate={isComplete ? { scale: [1, 1.15, 1] } : {}}
+                      transition={{ duration: 0.2 }}
+                      onClick={() => onToggleWorkoutCompleted(item.id)}
+                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-black uppercase tracking-[0.1em] transition-all duration-200 active:scale-95 border ${isComplete
+                          ? "border-emerald-500/35 bg-emerald-500/20 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)] text-[10px]"
+                          : "border-red-500/20 bg-red-500/10 text-red-400 hover:border-red-500/40 hover:bg-red-500/20 text-[9px]"
                         }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => onToggleSet(item.id, index)}
-                          className="h-4 w-4 accent-[var(--rank-accent)]"
-                        />
-                        S{index + 1}
-                      </motion.label>
-                    ))}
+                    >
+                      <Check className={`h-3 w-3 ${isComplete ? "text-emerald-400" : "text-red-400"}`} />
+                      <span>{isComplete ? "Completed" : "Mark Completed"}</span>
+                    </motion.button>
                   </div>
                 </div>
               );
@@ -624,19 +772,17 @@ function WeeklyPlanView({
           Day Split Row Matrix
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-          {daySummaries.map(({ day, label }) => (
+          {daySummaries.map(({ day }) => (
             <button
               key={day}
               type="button"
-              className={`min-h-28 rounded-2xl border p-4 text-left transition-all duration-100 active:scale-95 ${
-                selectedDay === day
+              className={`py-3 px-2 rounded-2xl border text-center transition-all duration-100 active:scale-95 ${selectedDay === day
                   ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/12 shadow-[0_0_12px_var(--rank-accent)]"
-                  : "border-slate-800 bg-slate-955 hover:border-slate-600"
-              }`}
+                  : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                }`}
               onClick={() => onSetSelectedDay(day)}
             >
               <p className="text-sm font-black text-white">{day}</p>
-              <p className="mt-3 text-sm text-slate-400">{label}</p>
             </button>
           ))}
         </div>
@@ -665,18 +811,37 @@ function WeeklyPlanView({
         </div>
 
         <div className="mt-5 flex flex-col md:flex-row gap-6 items-center">
-          {/* Interactive Vector Map Selector */}
-          <div className="flex flex-col items-center gap-2 p-3 bg-slate-950/60 border border-slate-800 rounded-2xl shrink-0">
-            <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase">
-              Interactive Selector
+          {/* Interactive Muscle Select Grid */}
+          <div className="flex flex-col items-center gap-2 p-4 bg-slate-955/60 border border-[var(--rank-accent)]/30 shadow-[var(--rank-accent-glow-subtle)] rounded-2xl shrink-0 w-full md:w-56">
+            <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
+              Interactive Muscle Select
             </span>
-            <BodyPartVectorMap
-              selectedPart={bodyPart}
-              onSelectPart={onSetBodyPart}
-              interactive={true}
-              size="medium"
-            />
-            <span className="text-xs font-black uppercase tracking-widest text-cyan-400 mt-1">
+            <div className="grid grid-cols-3 gap-2 w-full">
+              {["Chest", "Arms", "Legs", "Back", "Shoulders", "Core"].map((part) => {
+                const isSelected = bodyPart.toLowerCase() === part.toLowerCase();
+                return (
+                  <button
+                    key={part}
+                    type="button"
+                    onClick={() => onSetBodyPart(part)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${isSelected
+                        ? "bg-indigo-950/50 border-indigo-500 text-indigo-200"
+                        : "bg-slate-900/60 border-slate-800 text-slate-450 hover:border-slate-700 hover:text-slate-200"
+                      }`}
+                  >
+                    <img
+                      src={getBodyPartIcon(part)}
+                      alt={part}
+                      className="w-7 h-7 object-contain mb-1"
+                    />
+                    <span className="text-[8px] font-black uppercase tracking-wider text-center w-full truncate">
+                      {part}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-cyan-400 mt-2">
               {bodyPart || "Select Part"}
             </span>
           </div>
@@ -743,7 +908,7 @@ function WeeklyPlanView({
               <div className="flex items-end">
                 <button
                   type="submit"
-                  className="w-full h-11 rounded-xl bg-emerald-650 hover:bg-emerald-600 px-4 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 active:scale-95 flex items-center justify-center"
+                  className="w-full h-11 rounded-xl bg-[var(--rank-accent)]/20 hover:bg-[var(--rank-accent)]/35 border border-[var(--rank-accent)]/40 px-4 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 active:scale-95 flex items-center justify-center shadow-[var(--rank-accent-glow-subtle)]"
                 >
                   Add to Split
                 </button>
@@ -782,11 +947,11 @@ function WeeklyPlanView({
                         className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-955/50 p-3"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-955/80 border border-slate-800 p-0.5 overflow-hidden">
-                            <BodyPartVectorMap
-                              selectedPart={item.bodyPart}
-                              interactive={false}
-                              size="small"
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-955/80 border border-slate-800 p-1.5 overflow-hidden">
+                            <img
+                              src={getBodyPartIcon(item.bodyPart)}
+                              alt={item.bodyPart}
+                              className="h-8 w-8 object-contain"
                             />
                           </div>
                           <div>

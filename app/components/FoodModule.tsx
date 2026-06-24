@@ -2,22 +2,13 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { Droplet, Plus, Minus, Trash2, PlusCircle, Apple, UtensilsCrossed, HandPlatter, ChefHat, Zap, Flame, Leaf } from "lucide-react";
+import { Droplet, Plus, Trash2, PlusCircle, Beef, Zap, Flame, Leaf } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNectStore } from "../store/useNectStore";
 import { FireStreak } from "./FireStreak";
 import { PowerUpBoost } from "./PowerUpBoost";
 
 type ServingUnitType = "Grams" | "Bowls" | "Whole Fruit" | "Milliliters" | "Scoops";
-
-type CustomFoodItem = {
-  id: number;
-  name: string;
-  servingUnit: ServingUnitType;
-  calories: number;
-  protein: number;
-  fiber: number;
-};
 
 type PlateItem = {
   id: number;
@@ -30,40 +21,14 @@ type PlateItem = {
   checked: boolean;
 };
 
-const initialCustomFoods: CustomFoodItem[] = [
-  {
-    id: 1,
-    name: "Rolled Oats",
-    servingUnit: "Bowls",
-    calories: 150,
-    protein: 5,
-    fiber: 4,
-  },
-  {
-    id: 2,
-    name: "Banana",
-    servingUnit: "Whole Fruit",
-    calories: 105,
-    protein: 1.3,
-    fiber: 3,
-  },
-  {
-    id: 3,
-    name: "Chicken Breast",
-    servingUnit: "Grams",
-    calories: 1.65,
-    protein: 0.31,
-    fiber: 0,
-  },
-  {
-    id: 4,
-    name: "Rice",
-    servingUnit: "Bowls",
-    calories: 205,
-    protein: 4.2,
-    fiber: 0.6,
-  },
-];
+type SearchResult = {
+  id: string;
+  name: string;
+  brand: string;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  fiberPer100g: number;
+};
 
 const initialPlateItems: PlateItem[] = [
   {
@@ -97,6 +62,14 @@ type FoodModuleProps = {
   height?: number;
   setHeight?: (h: number) => void;
   workoutEnabled?: boolean;
+  age?: number;
+  setAge?: (a: number) => void;
+  biologicalSex?: "Men" | "Women";
+  setBiologicalSex?: (s: "Men" | "Women") => void;
+  activityMultiplier?: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
+  setActivityMultiplier?: (m: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") => void;
+  proteinActivityFactor?: "Sedentary" | "Active" | "Strength";
+  setProteinActivityFactor?: (f: "Sedentary" | "Active" | "Strength") => void;
 };
 
 export function FoodModule({
@@ -105,14 +78,25 @@ export function FoodModule({
   height: propHeight,
   setHeight: propSetHeight,
   workoutEnabled = true,
+  age: propAge,
+  setAge: propSetAge,
+  biologicalSex: propSex,
+  setBiologicalSex: propSetSex,
+  activityMultiplier: propActivity,
+  setActivityMultiplier: propSetActivity,
+  proteinActivityFactor: propProteinFactor,
+  setProteinActivityFactor: propSetProteinFactor,
 }: FoodModuleProps) {
-  const [activeView, setActiveView] = useState<"plate" | "custom">("plate");
-  const [customFoods, setCustomFoods] = useState<CustomFoodItem[]>(initialCustomFoods);
   const [plateItems, setPlateItems] = useState<PlateItem[]>(initialPlateItems);
   const [water, setWater] = useState(0);
   const [notification, setNotification] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [dayCompleted, setDayCompleted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedSearchFoodId, setSelectedSearchFoodId] = useState<string | null>(null);
+  const [searchGrams, setSearchGrams] = useState<number>(100);
 
   // Zustand state
   const {
@@ -124,14 +108,35 @@ export function FoodModule({
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const lastDate = localStorage.getItem("nect_food_last_date");
+
+      let loadedPlate = initialPlateItems;
       const storedPlate = localStorage.getItem("nect_food_plate_items");
-      const storedCustom = localStorage.getItem("nect_food_custom_foods");
+      if (storedPlate) loadedPlate = JSON.parse(storedPlate);
+
+      let loadedWater = 0;
       const storedWater = localStorage.getItem("nect_food_water");
+      if (storedWater) loadedWater = Number(storedWater);
+
+      let loadedCompleted = false;
       const storedCompleted = localStorage.getItem("nect_food_day_completed");
-      if (storedPlate) setPlateItems(JSON.parse(storedPlate));
-      if (storedCustom) setCustomFoods(JSON.parse(storedCustom));
-      if (storedWater) setWater(Number(storedWater));
-      if (storedCompleted) setDayCompleted(JSON.parse(storedCompleted));
+      if (storedCompleted) loadedCompleted = JSON.parse(storedCompleted);
+
+      if (lastDate !== todayStr) {
+        // Daily refresh: clear plate, water, and completion status
+        loadedPlate = [];
+        loadedWater = 0;
+        loadedCompleted = false;
+        localStorage.setItem("nect_food_last_date", todayStr);
+        localStorage.setItem("nect_food_plate_items", JSON.stringify([]));
+        localStorage.setItem("nect_food_water", "0");
+        localStorage.setItem("nect_food_day_completed", "false");
+      }
+
+      setPlateItems(loadedPlate);
+      setWater(loadedWater);
+      setDayCompleted(loadedCompleted);
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
@@ -144,11 +149,6 @@ export function FoodModule({
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_custom_foods", JSON.stringify(customFoods));
-  }, [customFoods, isLoaded]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
     localStorage.setItem("nect_food_water", String(water));
   }, [water, isLoaded]);
 
@@ -157,118 +157,69 @@ export function FoodModule({
     localStorage.setItem("nect_food_day_completed", JSON.stringify(dayCompleted));
   }, [dayCompleted, isLoaded]);
 
-  // Form states for log today's intake
-  const [selectedFoodId, setSelectedFoodId] = useState<number>(1);
-  const [logQuantity, setLogQuantity] = useState<number>(1);
-
-  // Form states for custom food builder
-  const [newName, setNewName] = useState("");
-  const [newUnit, setNewUnit] = useState<ServingUnitType>("Grams");
-  const [newCalories, setNewCalories] = useState<number | "">("");
-  const [newProtein, setNewProtein] = useState<number | "">("");
-  const [newFiber, setNewFiber] = useState<number | "">("");
-
   // Internal fallbacks for telemetry if workout module is disabled
   const [internalWeight, setInternalWeight] = useState(75);
   const [internalHeight, setInternalHeight] = useState(180);
+  const [internalAge, setInternalAge] = useState(25);
+  const [internalSex, setInternalSex] = useState<"Men" | "Women">("Men");
+  const [internalActivity, setInternalActivity] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">("Moderately Active");
+  const [internalProteinFactor, setInternalProteinFactor] = useState<"Sedentary" | "Active" | "Strength">("Strength");
 
   const weight = workoutEnabled && propWeight !== undefined ? propWeight : internalWeight;
-  const setWeight = workoutEnabled && propSetWeight !== undefined ? propSetWeight : setInternalWeight;
   const height = workoutEnabled && propHeight !== undefined ? propHeight : internalHeight;
-  const setHeight = workoutEnabled && propSetHeight !== undefined ? propSetHeight : setInternalHeight;
+  const age = workoutEnabled && propAge !== undefined ? propAge : internalAge;
+  const biologicalSex = workoutEnabled && propSex !== undefined ? propSex : internalSex;
+  const activityMultiplier = workoutEnabled && propActivity !== undefined ? propActivity : internalActivity;
+  const proteinActivityFactor = workoutEnabled && propProteinFactor !== undefined ? propProteinFactor : internalProteinFactor;
 
   // Calculators for targets
-  const caloriesTarget = useMemo(() => Math.round(weight * 30), [weight]);
-  const proteinTarget = useMemo(() => Math.round(weight * 2.0), [weight]);
-  const fiberTarget = useMemo(() => Math.round(height / 7), [height]);
+  const calculatedTargets = useMemo(() => {
+    const bmr = biologicalSex === "Men"
+      ? (10 * weight) + (6.25 * height) - (5 * age) + 5
+      : (10 * weight) + (6.25 * height) - (5 * age) - 161;
 
-  const selectedFoodItem = useMemo(() => {
-    return customFoods.find((f) => f.id === selectedFoodId) || customFoods[0];
-  }, [customFoods, selectedFoodId]);
+    let multiplier = 1.55;
+    if (activityMultiplier === "Sedentary") multiplier = 1.2;
+    else if (activityMultiplier === "Lightly Active") multiplier = 1.375;
+    else if (activityMultiplier === "Moderately Active") multiplier = 1.55;
+    else if (activityMultiplier === "Very Active") multiplier = 1.725;
 
-  useEffect(() => {
-    if (customFoods.length > 0 && !customFoods.some((f) => f.id === selectedFoodId)) {
-      const timer = setTimeout(() => {
-        setSelectedFoodId(customFoods[0].id);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [customFoods, selectedFoodId]);
+    const tdee = bmr * multiplier;
+
+    let proteinMultiplier = 2.0;
+    if (proteinActivityFactor === "Sedentary") proteinMultiplier = 1.0;
+    else if (proteinActivityFactor === "Active") proteinMultiplier = 1.4;
+    else if (proteinActivityFactor === "Strength") proteinMultiplier = 2.0;
+
+    const protein = weight * proteinMultiplier;
+    const fiber = (tdee / 1000) * 14;
+
+    return {
+      calories: Math.round(tdee),
+      protein: Math.round(protein),
+      fiber: Math.round(fiber * 10) / 10
+    };
+  }, [weight, height, age, biologicalSex, activityMultiplier, proteinActivityFactor]);
+
+  const caloriesTarget = calculatedTargets.calories;
+  const proteinTarget = calculatedTargets.protein;
+  const fiberTarget = calculatedTargets.fiber;
 
   // Calculations for current consumed totals
   const totals = useMemo(() => {
     return plateItems.reduce(
       (acc, item) => {
-        if (item.checked) {
-          acc.calories += Math.round(item.calories * item.quantity);
-          acc.protein += Math.round(item.protein * item.quantity * 10) / 10;
-          acc.fiber += Math.round(item.fiber * item.quantity * 10) / 10;
-        }
+        acc.calories += Math.round(item.calories * item.quantity);
+        acc.protein += Math.round(item.protein * item.quantity * 10) / 10;
+        acc.fiber += Math.round(item.fiber * item.quantity * 10) / 10;
         return acc;
       },
       { calories: 0, protein: 0, fiber: 0 },
     );
   }, [plateItems]);
 
-  const bmi = height > 0 ? weight / (height / 100) ** 2 : 0;
-  const bmiMeta = getBmiMeta(bmi);
-
-  const isWaterGoalMet = water >= 3.0;
+  const isWaterGoalMet = water >= (biologicalSex === "Men" ? 3.0 : 2.2);
   const allTargetsMet = totals.calories >= caloriesTarget && totals.protein >= proteinTarget && totals.fiber >= fiberTarget;
-
-  // Handlers
-  function handleAddCustomFood(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!newName.trim()) return;
-
-    const newItem: CustomFoodItem = {
-      id: Date.now(),
-      name: newName,
-      servingUnit: newUnit,
-      calories: Number(newCalories) || 0,
-      protein: Number(newProtein) || 0,
-      fiber: Number(newFiber) || 0,
-    };
-
-    setCustomFoods((current) => [...current, newItem]);
-    setNewName("");
-    setNewUnit("Grams");
-    setNewCalories("");
-    setNewProtein("");
-    setNewFiber("");
-    setNotification(`${newName} saved to Kitchen Dictionary.`);
-  }
-
-  function handleDeleteCustomFood(id: number) {
-    const foodToDelete = customFoods.find((f) => f.id === id);
-    setCustomFoods((current) => current.filter((f) => f.id !== id));
-    if (foodToDelete) {
-      setNotification(`${foodToDelete.name} removed from Kitchen Dictionary.`);
-    }
-  }
-
-  function handleLogPlateItem(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedFoodItem) return;
-
-    const newItem: PlateItem = {
-      id: Date.now(),
-      name: selectedFoodItem.name,
-      servingUnit: selectedFoodItem.servingUnit,
-      quantity: logQuantity,
-      calories: selectedFoodItem.calories,
-      protein: selectedFoodItem.protein,
-      fiber: selectedFoodItem.fiber,
-      checked: true,
-    };
-
-    setPlateItems((current) => [...current, newItem]);
-    setLogQuantity(1);
-    
-    // Award 15 XP for logging a plate item
-    awardPoints(15, "Food");
-    setNotification(`${logQuantity} ${selectedFoodItem.servingUnit} of ${selectedFoodItem.name} logged. +15 XP awarded.`);
-  }
 
   function handleTogglePlateItem(id: number) {
     let wasChecked = false;
@@ -298,613 +249,434 @@ export function FoodModule({
     setNotification("Complete Nutrition Day recorded! Streak advanced & +150 XP awarded.");
   }
 
-  function handleDecayStreak() {
-    decayHealthyStreak();
-    setDayCompleted(false);
-    setNotification("Nutrition goals missed. Healthy Streak decayed back to 0.");
+
+
+  async function handleSearchFood() {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSelectedSearchFoodId(null);
+    try {
+      const res = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
+          searchQuery,
+        )}&search_simple=1&action=process&json=1&page_size=5`,
+      );
+      const data = await res.json();
+      if (data.products && Array.isArray(data.products)) {
+        const mapped = data.products.map((product: any) => ({
+          id: product._id || String(Math.random()),
+          name: product.product_name || "Unknown Product",
+          brand: product.brands || "Generic",
+          caloriesPer100g: Math.round(product.nutriments?.["energy-kcal_100g"] || 0),
+          proteinPer100g: Number(product.nutriments?.proteins_100g) || 0,
+          fiberPer100g: Number(product.nutriments?.fiber_100g) || 0,
+        }));
+        setSearchResults(mapped);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error(err);
+      setNotification("Failed to connect to Open Food Facts API.");
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  function handleLogSearchFood(food: SearchResult) {
+    const grams = searchGrams || 100;
+    const newItem: PlateItem = {
+      id: Date.now(),
+      name: `${food.name} (${food.brand})`,
+      servingUnit: "Grams",
+      quantity: grams,
+      calories: food.caloriesPer100g / 100,
+      protein: food.proteinPer100g / 100,
+      fiber: food.fiberPer100g / 100,
+      checked: true,
+    };
+
+    setPlateItems((current) => [...current, newItem]);
+    setSelectedSearchFoodId(null);
+    setSearchGrams(100);
+    awardPoints(15, "Food");
   }
 
   return (
     <section className="space-y-6 animate-fade-in-up">
-      {/* Dynamic target tag & header */}
+      {/* Top Panel (Main Panel) */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
-          <div className="flex flex-wrap items-center gap-4">
-            
-            {/* Category Icon wrapped in PowerUpBoost */}
-            <PowerUpBoost moduleKey="Food">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
-                <Image
-                  src="/assets/icons/food.png"
-                  alt="Food module icon"
-                  width={44}
-                  height={44}
-                  className="h-11 w-11 object-contain"
-                />
-              </div>
-            </PowerUpBoost>
-
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-                Food Module
-              </p>
-              <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
-                NUTRITION
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-center md:items-start text-center md:text-left shrink-0">
+              <h1 className="text-3xl font-black text-white uppercase tracking-wider">
+                Meal Plan
               </h1>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            {/* FireStreak Component */}
-            <FireStreak streakValue={healthyStreak} streakType="Healthy" />
-
-            <div className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-sm font-semibold text-white shadow-[0_0_20px_rgba(34,211,238,0.1)]">
-              <span className="text-[var(--rank-accent)] font-bold">TARGETS:</span>{" "}
-              {caloriesTarget} kcal <span className="text-slate-650">|</span> {proteinTarget}g Protein <span className="text-slate-650">|</span> {fiberTarget}g Fiber
-            </div>
-
-            {notification && (
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 animate-pulse">
-                {notification}
+              <span className="text-[10px] font-black tracking-[0.2em] text-[var(--rank-accent)] mt-1.5 uppercase">
+                Restore your energy
               </span>
-            )}
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Telemetry / Status Row */}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 pt-5 border-t border-slate-800/80">
+          {/* Streak Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Flame className="h-5 w-5 animate-pulse" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Food Streak</p>
+              <p className="text-sm font-black text-white">{healthyStreak} Days</p>
+            </div>
           </div>
 
-          <div className="mt-6 inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
-            {[
-              { id: "plate" as const, label: "Today's Plate", icon: HandPlatter },
-              { id: "custom" as const, label: "Custom Food", icon: ChefHat },
-            ].map((view) => {
-              const Icon = view.icon;
-              return (
-                <button
-                  key={view.id}
-                  type="button"
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeView === view.id
-                      ? "bg-[var(--rank-accent)]/15 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
-                      : "text-slate-400 hover:text-white"
-                    }`}
-                  onClick={() => setActiveView(view.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{view.label}</span>
-                </button>
-              );
-            })}
+          {/* Calories Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Zap className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Calories</p>
+              <p className="text-sm font-black text-white">{totals.calories} kcal</p>
+            </div>
           </div>
+
+          {/* Protein Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Beef className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Protein</p>
+              <p className="text-sm font-black text-white">{totals.protein.toFixed(2)}g</p>
+            </div>
+          </div>
+
+          {/* Fiber Indicator */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+              <Leaf className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fiber</p>
+              <p className="text-sm font-black text-white">{totals.fiber.toFixed(2)}g</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Main workspace container */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
-        {activeView === "plate" ? (
-          <div className="space-y-6">
-            <div className="grid gap-5 md:grid-cols-2">
-              {/* Minimalist Water Intake Engine */}
-              <div
-                className={`rounded-2xl border p-6 transition-all duration-300 ${isWaterGoalMet
-                    ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
-                    : "border-slate-800 bg-slate-950/35"
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${isWaterGoalMet ? "border-emerald-500/30 bg-emerald-950/70" : "border-slate-800 bg-slate-950/50"
-                    }`}>
-                    <Droplet className={`h-5 w-5 ${isWaterGoalMet ? "text-emerald-400 animate-pulse" : "text-blue-400"}`} />
+        <div className="space-y-6">
+          <div className="grid gap-5 md:grid-cols-2">
+            {/* Effortless Food Intake Logger Form (LEFT SIDE) */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-6 flex flex-col justify-between min-h-[300px]">
+              <div>
+                <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 mb-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
+                    <PlusCircle className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">Water Hydration Engine</h3>
-                    <p className="text-xs text-slate-405">Target: 3.0 Liters</p>
+                    <h3 className="font-bold text-white">Log Today&apos;s Intake</h3>
+                    <p className="text-xs text-slate-405">Select and log food item</p>
                   </div>
                 </div>
 
-                <div className="mt-6 flex items-center justify-center gap-6">
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-850 text-slate-200 transition-all duration-100 hover:bg-slate-750 active:scale-95 cursor-pointer"
-                    onClick={() => setWater((prev) => Math.max(0, prev - 0.25))}
-                  >
-                    <Minus className="h-5 w-5" />
-                  </button>
-                  <div className="text-center min-w-[120px]">
-                    <span className="text-3xl font-black text-white">{water.toFixed(2)}</span>
-                    <span className="ml-1 text-sm font-bold text-slate-400">L</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-850 text-slate-200 transition-all duration-100 hover:bg-slate-750 active:scale-95 cursor-pointer"
-                    onClick={() => setWater((prev) => prev + 0.25)}
-                  >
-                    <Plus className="h-5 w-5" />
-                  </button>
-                </div>
-
-                {isWaterGoalMet && (
-                  <p className="mt-4 text-center text-xs font-bold text-emerald-400 animate-bounce">
-                    ✨ Optimal Hydration Target Achieved!
-                  </p>
-                )}
-              </div>
-
-              {/* Effortless Food Intake Logger Form */}
-              <form
-                onSubmit={handleLogPlateItem}
-                className="rounded-2xl border border-slate-800 bg-slate-950/35 p-6 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
-                      <PlusCircle className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white">Log Today&apos;s Intake</h3>
-                      <p className="text-xs text-slate-400">Select and log custom foods</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-[1.5fr_1fr]">
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Food Item
-                      </span>
-                      <select
-                        className={`${fieldClass} w-full`}
-                        value={selectedFoodId}
-                        onChange={(e) => setSelectedFoodId(Number(e.target.value))}
-                      >
-                        {customFoods.length === 0 ? (
-                          <option value="">No Custom Foods</option>
-                        ) : (
-                          customFoods.map((food) => (
-                            <option key={food.id} value={food.id}>
-                              {food.name}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Quantity ({selectedFoodItem?.servingUnit || "Units"})
-                      </span>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0.01"
-                        className={`${fieldClass} w-full`}
-                        value={logQuantity}
-                        onChange={(e) => setLogQuantity(Number(e.target.value))}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex justify-end">
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 hover:bg-emerald-500 active:scale-95 cursor-pointer"
-                    disabled={customFoods.length === 0}
-                  >
-                    Log to Today&apos;s Plate
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Checklist Table */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5 border-b border-slate-800/80 pb-4">
-                <div>
-                  <h2 className="text-xl font-black text-white">Daily Meal Checklist</h2>
-                  <p className="text-xs text-slate-400">
-                    Check items to add them to your day&apos;s macro accumulation
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 text-xs font-bold items-center">
-                  <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
-                    Cal:{" "}
-                    <span
-                      className={
-                        totals.calories >= caloriesTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
-                      }
-                    >
-                      {totals.calories}
-                    </span>{" "}
-                    / {caloriesTarget} kcal
-                  </span>
-                  <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
-                    Pro:{" "}
-                    <span
-                      className={
-                        totals.protein >= proteinTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
-                      }
-                    >
-                      {totals.protein}g
-                    </span>{" "}
-                    / {proteinTarget}g
-                  </span>
-                  <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
-                    Fib:{" "}
-                    <span
-                      className={totals.fiber >= fiberTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"}
-                    >
-                      {totals.fiber.toFixed(1)}g
-                    </span>{" "}
-                    / {fiberTarget}g
-                  </span>
-
-                  {/* Complete Day action buttons */}
-                  <button
-                    type="button"
-                    className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
-                    onClick={handleDecayStreak}
-                  >
-                    Simulate Missed Day
-                  </button>
-
-                  {allTargetsMet && (
+                <div className="space-y-4">
+                  {/* Search Bar */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search food (e.g., Rice, Oats, Chicken)..."
+                      className={`${fieldClass} flex-1`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSearchFood();
+                      }}
+                    />
                     <button
                       type="button"
-                      disabled={dayCompleted}
-                      className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${
-                        dayCompleted
-                          ? "bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none"
-                          : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"
-                      }`}
-                      onClick={handleCompleteNutritionDay}
+                      onClick={handleSearchFood}
+                      disabled={searchLoading}
+                      className="rounded-xl bg-[var(--rank-accent)]/20 border border-[var(--rank-accent)]/30 px-4 py-2 text-xs font-black uppercase tracking-wider text-white transition-all duration-105 hover:bg-[var(--rank-accent)]/30 active:scale-95 cursor-pointer"
                     >
-                      {dayCompleted ? "✓ Day Recorded" : "Complete Nutrition Day"}
+                      {searchLoading ? "Searching..." : "Search"}
+                    </button>
+                  </div>
+
+                  {/* Search Results */}
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {searchResults.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic text-center py-4">
+                        {searchLoading ? "Fetching live nutriment data..." : "Enter query to search live database."}
+                      </p>
+                    ) : (
+                      searchResults.map((food) => (
+                        <div
+                          key={food.id}
+                          className="rounded-xl border border-slate-800 bg-slate-900/30 p-3 flex flex-col gap-2 transition-all hover:bg-slate-900/50"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <h4 className="font-bold text-white text-xs">{food.name}</h4>
+                              <p className="text-[10px] text-slate-550">{food.brand}</p>
+                            </div>
+                            <span className="text-[10px] font-mono text-[var(--rank-accent)] font-bold">100g base</span>
+                          </div>
+
+                          <div className="flex justify-between items-center gap-4 mt-1 border-t border-slate-900 pt-2">
+                            <div className="text-[10px] text-slate-400 font-mono flex gap-2">
+                              <span>{food.caloriesPer100g} kcal</span>
+                              <span>•</span>
+                              <span>{food.proteinPer100g.toFixed(2)}g Pro</span>
+                              <span>•</span>
+                              <span>{food.fiberPer100g.toFixed(2)}g Fib</span>
+                            </div>
+
+                            {selectedSearchFoodId === food.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    value={searchGrams}
+                                    onChange={(e) => setSearchGrams(Math.max(1, Number(e.target.value) || 0))}
+                                    className="w-16 rounded bg-slate-950 px-2 py-1 text-center text-xs font-bold text-white border border-slate-800 focus:border-emerald-500 outline-none"
+                                    placeholder="g"
+                                    min={1}
+                                  />
+                                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold uppercase pointer-events-none">g</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleLogSearchFood(food)}
+                                  className="bg-emerald-600 border border-emerald-500 text-white hover:bg-emerald-500 active:scale-95 text-[10px] font-black uppercase px-2.5 py-1.5 rounded"
+                                >
+                                  Add
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedSearchFoodId(null)}
+                                  className="bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 active:scale-95 text-[10px] font-black uppercase px-2 py-1.5 rounded"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSearchFoodId(food.id);
+                                  setSearchGrams(100);
+                                }}
+                                className="bg-emerald-600/10 border border-emerald-500/20 text-emerald-450 hover:bg-emerald-500/20 active:scale-95 text-[10px] font-black uppercase px-2.5 py-1.5 rounded"
+                              >
+                                Add to Plate
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Minimalist Water Intake Engine (RIGHT SIDE) */}
+            <div
+              className={`relative rounded-2xl border p-6 transition-all duration-300 ${isWaterGoalMet
+                  ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
+                  : "border-slate-800 bg-slate-950/35"
+                }`}
+            >
+              {isWaterGoalMet && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-3 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.4)]">
+                  Optimal Hydration Target Achieved
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl border ${isWaterGoalMet ? "border-emerald-500/30 bg-emerald-950/70" : "border-slate-800 bg-slate-950/50"
+                  }`}>
+                  <Droplet className={`h-5 w-5 ${isWaterGoalMet ? "animate-pulse" : ""}`} style={{ color: "var(--rank-accent)" }} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white">Water Intake</h3>
+                  <p className="text-xs text-slate-405">
+                    Target: {biologicalSex === "Men" ? "3.0" : "2.2"} Liters ({biologicalSex === "Men" ? "12" : "9"} cups)
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-4">
+                {/* Cups and Liters visualization */}
+                <div className="flex flex-col items-center justify-center py-6 bg-slate-950/20 rounded-xl border border-slate-900/60">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-4xl font-black text-white">{Math.round(water / 0.25)}</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">cups added</span>
+                  </div>
+                  <div className="text-xs font-mono text-slate-500">
+                    Total: {water.toFixed(2)} Liters / {biologicalSex === "Men" ? "3.00" : "2.20"} Liters
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWater((prev) => prev + 0.25)}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-105 hover:bg-blue-500 active:scale-95 cursor-pointer w-full shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Add 1 Cup of water</span>
+                  </button>
+                  
+                  {water > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setWater((prev) => Math.max(0, prev - 0.25))}
+                      className="text-slate-500 hover:text-slate-350 text-[10px] uppercase font-bold tracking-wider py-1 cursor-pointer transition-colors"
+                    >
+                      Remove 1 Cup
                     </button>
                   )}
                 </div>
               </div>
 
-              {plateItems.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/30 p-8 text-center text-slate-500 text-sm">
-                  No food logged to today&apos;s plate. Log an item above or create new foods in Custom
-                  Food.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-505">
-                        <th className="py-3 px-4 w-12 text-center">Status</th>
-                        <th className="py-3 px-4">Food Item</th>
-                        <th className="py-3 px-4">Quantity / Serving</th>
-                        <th className="py-3 px-4">Calories</th>
-                        <th className="py-3 px-4">Protein</th>
-                        <th className="py-3 px-4">Fiber</th>
-                        <th className="py-3 px-4 text-right w-16">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {plateItems.map((item) => {
-                        const itemCalories = Math.round(item.calories * item.quantity);
-                        const itemProtein = Math.round(item.protein * item.quantity * 10) / 10;
-                        const itemFiber = Math.round(item.fiber * item.quantity * 10) / 10;
-
-                        return (
-                          <tr
-                            key={item.id}
-                            className={`transition-all duration-300 ${item.checked ? "opacity-45 bg-slate-950/5" : "hover:bg-slate-950/15"
-                              }`}
-                          >
-                            <td className="py-3 px-4 text-center">
-                              {/* Checkbox Interaction: scale pulse on checklist checkboxes */}
-                              <motion.label
-                                animate={item.checked ? { scale: [1, 1.2, 1] } : {}}
-                                transition={{ duration: 0.2 }}
-                                className="inline-flex cursor-pointer items-center justify-center w-5 h-5 rounded border border-slate-700 bg-slate-900 transition-transform active:scale-95"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={item.checked}
-                                  onChange={() => handleTogglePlateItem(item.id)}
-                                  className="h-3.5 w-3.5 accent-[var(--rank-accent)]"
-                                />
-                              </motion.label>
-                            </td>
-                            <td className="py-3 px-4 font-bold text-slate-200">
-                              <span className={item.checked ? "line-through text-slate-505" : ""}>
-                                {item.name}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-slate-400 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-505" : ""}>
-                                {item.quantity} {item.servingUnit}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-550" : ""}>
-                                {itemCalories} kcal
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-550" : ""}>
-                                {itemProtein}g
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-slate-300 font-mono text-sm">
-                              <span className={item.checked ? "line-through text-slate-550" : ""}>
-                                {itemFiber}g
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <button
-                                type="button"
-                                className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-rose-300 transition-all duration-100 hover:bg-rose-500/25 active:scale-95 cursor-pointer"
-                                onClick={() => handleDeletePlateItem(item.id)}
-                                aria-label={`Delete ${item.name}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Custom Intake Builder Form */}
-            <form
-              className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5"
-              onSubmit={handleAddCustomFood}
-            >
-              <div className="mb-4">
-                <h2 className="text-xl font-black text-white">Create Custom Food Entry</h2>
-                <p className="text-sm text-slate-400">
-                  Configure food details to expand your selectable kitchen dictionary.
-                </p>
+
+          {/* Checklist Table */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5 border-b border-slate-800/80 pb-4">
+              <div>
+                <h2 className="text-xl font-black text-white">Daily Meal</h2>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-[1.5fr_1fr_0.8fr_0.8fr_0.8fr]">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Food Name
-                  </span>
-                  <input
-                    className={fieldClass}
-                    placeholder="e.g. Rolled Oats"
-                    required
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Serving Unit
-                  </span>
-                  <select
-                    className={fieldClass}
-                    value={newUnit}
-                    onChange={(e) => setNewUnit(e.target.value as ServingUnitType)}
+              <div className="flex flex-wrap gap-2 text-xs font-bold items-center">
+                <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
+                  Cal:{" "}
+                  <span
+                    className={
+                      totals.calories >= caloriesTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
+                    }
                   >
-                    {["Grams", "Bowls", "Whole Fruit", "Milliliters", "Scoops"].map((unit) => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Calories (kcal)
-                  </span>
-                  <input
-                    className={fieldClass}
-                    min={0}
-                    type="number"
-                    required
-                    placeholder="e.g. 150"
-                    value={newCalories}
-                    onChange={(e) =>
-                      setNewCalories(e.target.value === "" ? "" : Number(e.target.value))
+                    {totals.calories}
+                  </span>{" "}
+                  kcal
+                </span>
+                <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
+                  Pro:{" "}
+                  <span
+                    className={
+                      totals.protein >= proteinTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"
                     }
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Protein (g)
+                  >
+                    {totals.protein.toFixed(2)}g
                   </span>
-                  <input
-                    className={fieldClass}
-                    min={0}
-                    step="any"
-                    type="number"
-                    required
-                    placeholder="e.g. 5"
-                    value={newProtein}
-                    onChange={(e) =>
-                      setNewProtein(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Fiber (g)
+                </span>
+                <span className="rounded-full bg-slate-900/60 px-3 py-1.5 border border-slate-800 text-slate-200">
+                  Fib:{" "}
+                  <span
+                    className={totals.fiber >= fiberTarget ? "text-emerald-400 font-extrabold" : "text-cyan-405"}
+                  >
+                    {totals.fiber.toFixed(2)}g
                   </span>
-                  <input
-                    className={fieldClass}
-                    min={0}
-                    step="any"
-                    type="number"
-                    required
-                    placeholder="e.g. 4"
-                    value={newFiber}
-                    onChange={(e) =>
-                      setNewFiber(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                  />
-                </div>
+                </span>
+
+
+
+                {allTargetsMet && (
+                  <button
+                    type="button"
+                    disabled={dayCompleted}
+                    className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${
+                      dayCompleted
+                        ? "bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none"
+                        : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"
+                    }`}
+                    onClick={handleCompleteNutritionDay}
+                  >
+                    {dayCompleted ? "✓ Day Recorded" : "Complete Nutrition Day"}
+                  </button>
+                )}
               </div>
-
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="submit"
-                  className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-100 hover:bg-emerald-500 active:scale-95 cursor-pointer"
-                >
-                  Save to Kitchen Dict
-                </button>
-              </div>
-            </form>
-
-            {/* Saved Kitchen Dictionary */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-              <h2 className="text-xl font-black text-white mb-4 flex items-center gap-2">
-                <UtensilsCrossed className="h-5 w-5 text-emerald-400" />
-                Saved Kitchen Dictionary
-              </h2>
-              {customFoods.length === 0 ? (
-                <p className="text-sm text-slate-500">No custom foods configured.</p>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {customFoods.map((food) => (
-                    <div
-                      key={food.id}
-                      className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-4 animate-fade-in"
-                    >
-                      <div>
-                        <h3 className="font-bold text-white truncate pr-6">{food.name}</h3>
-                        <p className="text-xs text-slate-500 mt-1">1 {food.servingUnit}</p>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
-                        <span>{food.calories} kcal</span>
-                        <span>•</span>
-                        <span>{food.protein}g Pro</span>
-                        <span>•</span>
-                        <span>{food.fiber}g Fib</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="absolute top-4 right-4 rounded-lg border border-slate-800 bg-slate-950 p-2 text-slate-400 transition-transform duration-100 hover:text-rose-450 active:scale-95 cursor-pointer"
-                        onClick={() => handleDeleteCustomFood(food.id)}
-                        aria-label={`Delete ${food.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
+
+            {plateItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/30 p-8 text-center text-slate-500 text-sm">
+                No food logged to today&apos;s plate. Search and log an item on the left.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-505">
+                      <th className="py-3 px-4">Food Item</th>
+                      <th className="py-3 px-4">Quantity / Serving</th>
+                      <th className="py-3 px-4">Calories</th>
+                      <th className="py-3 px-4">Protein</th>
+                      <th className="py-3 px-4">Fiber</th>
+                      <th className="py-3 px-4 text-right w-16">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {plateItems.map((item) => {
+                      const itemCalories = Math.round(item.calories * item.quantity);
+                      const itemProtein = Math.round(item.protein * item.quantity * 10) / 10;
+                      const itemFiber = Math.round(item.fiber * item.quantity * 10) / 10;
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className="transition-all duration-300 hover:bg-slate-950/15"
+                        >
+                          <td className="py-3 px-4 font-bold text-slate-200">
+                            <span>
+                              {item.name}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-400 font-mono text-sm">
+                            <span>
+                              {item.quantity} {item.servingUnit}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-300 font-mono text-sm">
+                            <span>
+                              {itemCalories} kcal
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-300 font-mono text-sm">
+                            <span>
+                              {itemProtein.toFixed(2)}g
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-300 font-mono text-sm">
+                            <span>
+                              {itemFiber.toFixed(2)}g
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-rose-300 transition-all duration-100 hover:bg-rose-500/25 active:scale-95 cursor-pointer"
+                              onClick={() => handleDeletePlateItem(item.id)}
+                              aria-label={`Delete ${item.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </section>
   );
-}
-
-function HealthTelemetry({
-  bmi,
-  bmiMeta,
-  height,
-  setHeight,
-  setWeight,
-  weight,
-  workoutEnabled,
-}: {
-  bmi: number;
-  bmiMeta: { label: string; className: string };
-  height: number;
-  setHeight: (value: number) => void;
-  setWeight: (value: number) => void;
-  weight: number;
-  workoutEnabled: boolean;
-}) {
-  return (
-    <aside className="rounded-2xl border border-slate-800/80 bg-slate-900/45 p-6 backdrop-blur-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
-          Health Telemetry
-        </p>
-        {workoutEnabled ? (
-          <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-black text-emerald-450 border border-emerald-500/20">
-            Handshake Live
-          </span>
-        ) : (
-          <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-black text-amber-400 border border-amber-500/20">
-            Offline (Static Defaults)
-          </span>
-        )}
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <label className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            Weight kg
-          </span>
-          <input
-            className={`${fieldClass} w-full disabled:opacity-50`}
-            min={1}
-            type="number"
-            value={weight}
-            onChange={(event) => setWeight(Number(event.target.value))}
-            disabled={!workoutEnabled}
-          />
-        </label>
-        <label className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            Height cm
-          </span>
-          <input
-            className={`${fieldClass} w-full disabled:opacity-50`}
-            min={1}
-            type="number"
-            value={height}
-            onChange={(event) => setHeight(Number(event.target.value))}
-            disabled={!workoutEnabled}
-          />
-        </label>
-      </div>
-      <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-            BMI
-          </p>
-          <p className="mt-1 text-2xl font-black text-white">{bmi.toFixed(1)}</p>
-        </div>
-        <span className={`rounded-full px-3 py-2 text-sm font-black ${bmiMeta.className}`}>
-          {bmiMeta.label}
-        </span>
-      </div>
-      {!workoutEnabled && (
-        <p className="mt-4 text-xs text-amber-300/80 leading-relaxed">
-          ⚠️ Enable the Workout module in Settings to reactivate live telemetry synchronization.
-        </p>
-      )}
-    </aside>
-  );
-}
-
-function getBmiMeta(bmi: number) {
-  if (bmi < 18.5) {
-    return {
-      label: "UNDERWEIGHT",
-      className: "text-blue-400 bg-blue-500/10",
-    };
-  }
-
-  if (bmi < 25) {
-    return {
-      label: "PERFECT",
-      className: "text-emerald-400 bg-emerald-500/10",
-    };
-  }
-
-  return {
-    label: "OVERWEIGHT",
-    className: "text-amber-400 bg-amber-500/10",
-  };
 }

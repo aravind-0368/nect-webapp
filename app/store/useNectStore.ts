@@ -12,15 +12,12 @@ export interface RankTier {
 }
 
 export const rankTiers: RankTier[] = [
-  { name: "Outcast", min: 0, max: 499, color: "#555555", description: "A nameless nobody forgotten by the world." },
-  { name: "Vanguard", min: 500, max: 1499, color: "#990000", description: "The frontline soldier who refuses to die." },
-  { name: "Sorcerer", min: 1500, max: 3499, color: "#00008B", description: "Awakened power. A master of reality-bending manipulation." },
-  { name: "Archon", min: 3500, max: 7499, color: "#00FFFF", description: "A living storm. Your mere presence commands the room." },
-  { name: "Dread-General", min: 7500, max: 14999, color: "#74888C", description: "The Shift. Commander of armies. Empires tremble at your name." },
-  { name: "High-Lord", min: 15000, max: 29999, color: "#6A0DAD", description: "Absolute sovereignty. You own the landscape and rule the economy." },
-  { name: "Overlord", min: 30000, max: 59999, color: "#FFD700", description: "Unchecked dominion. You have conquered everything in the mortal realm." },
-  { name: "Monarch", min: 60000, max: 99999, color: "#4B0082", description: "A supreme, undying king of life and death." },
-  { name: "Demiurge", min: 100000, max: Infinity, color: "#E5E4E2", description: "The Creator. You have surpassed the system. You design the cosmos." }
+  { name: "E-Rank", min: 0, max: 500, color: "#FFFFFF", description: "The Awakening: A full-body skeleton silhouette clawing its way out of the grid matrix." },
+  { name: "D-Rank", min: 501, max: 1500, color: "#22C55E", description: "The Awakening: A robed healer holding a staff pulsing with restorative energy." },
+  { name: "C-Rank", min: 1501, max: 3500, color: "#EAB308", description: "The Awakening: A spark mage cradling active vector fire." },
+  { name: "B-Rank", min: 3501, max: 6000, color: "#EF4444", description: "The Ascended Elite: A flying Chinese dragon looping dynamically." },
+  { name: "A-Rank", min: 6001, max: 10000, color: "#06B6D4", description: "The Ascended Elite: A citadel knight visor with heavy shoulder armor plating." },
+  { name: "S-Rank", min: 10001, max: Infinity, color: "#D946EF", description: "The Supreme Echelon: A cosmic monarch's crown collapsing into spinning vector rings." }
 ];
 
 export function getActiveRank(points: number): RankTier {
@@ -30,12 +27,11 @@ export function getActiveRank(points: number): RankTier {
 export type ModuleKey = "Dashboard" | "Workout" | "Food" | "Learning" | "Money" | "Tasks";
 
 export const defaultWidgets = [
-  "Workout Consistency Radial Chart",
-  "Weekly Task Execution Bar Chart",
-  "Fuel Target Progress Gauges",
-  "Category Expense Pie Chart",
-  "Net Worth Area Spline",
-  "Academic Trajectory Line Chart",
+  "Resource Flow Engine",
+  "Cognitive Synaptic Gateway",
+  "Skill Matrix Hub",
+  "Kinetic Overdrive Matrix",
+  "Bounty Board Nodes"
 ];
 
 interface NectState {
@@ -50,6 +46,9 @@ interface NectState {
   widgetOrder: string[];
   activeBoosts: Record<string, number>; // Maps module key to expiration timestamp (ms)
   peakMentalPowerUntil: number | null; // Timestamp until which peak mental power is active
+  lastMainExamCompletedAt: number | null;
+  lastMainExamScore: number | null;
+  lastMainExamTitle: string | null;
   
   // Rank-up display trigger state
   prevPoints: number;
@@ -61,6 +60,7 @@ interface NectState {
   // Actions
   awardPoints: (amount: number, sourceModule?: string) => void;
   triggerPeakMentalPower: () => void;
+  setLastMainExam: (completedAt: number | null, score: number | null, title: string | null) => void;
   setPowerStreak: (val: number) => void;
   setSmartStreak: (val: number) => void;
   setHealthyStreak: (val: number) => void;
@@ -88,7 +88,7 @@ export const useNectStore = create<NectState>()(
       smartStreak: 7,
       healthyStreak: 3,
       lockRankTheme: true,
-      rankOverride: "Sorcerer",
+      rankOverride: "S-Rank",
       autoApproveTransactions: true,
       visibleModules: {
         Dashboard: true,
@@ -101,6 +101,9 @@ export const useNectStore = create<NectState>()(
       widgetOrder: defaultWidgets,
       activeBoosts: {},
       peakMentalPowerUntil: null,
+      lastMainExamCompletedAt: null,
+      lastMainExamScore: null,
+      lastMainExamTitle: null,
 
       prevPoints: 12840,
       showRankUpOverlay: false,
@@ -140,6 +143,14 @@ export const useNectStore = create<NectState>()(
       triggerPeakMentalPower: () => {
         const fortyEightHoursInMs = 48 * 60 * 60 * 1000;
         set({ peakMentalPowerUntil: Date.now() + fortyEightHoursInMs });
+      },
+
+      setLastMainExam: (completedAt, score, title) => {
+        set({
+          lastMainExamCompletedAt: completedAt,
+          lastMainExamScore: score,
+          lastMainExamTitle: title,
+        });
       },
 
       setPowerStreak: (val) => set({ powerStreak: val }),
@@ -185,7 +196,7 @@ export const useNectStore = create<NectState>()(
           smartStreak: 7,
           healthyStreak: 3,
           lockRankTheme: true,
-          rankOverride: "Sorcerer",
+          rankOverride: "S-Rank",
           autoApproveTransactions: true,
           visibleModules: {
             Dashboard: true,
@@ -198,6 +209,9 @@ export const useNectStore = create<NectState>()(
           widgetOrder: defaultWidgets,
           activeBoosts: {},
           peakMentalPowerUntil: null,
+          lastMainExamCompletedAt: null,
+          lastMainExamScore: null,
+          lastMainExamTitle: null,
           showRankUpOverlay: false,
         }),
     }),
@@ -214,6 +228,9 @@ export const useNectStore = create<NectState>()(
         visibleModules: state.visibleModules,
         widgetOrder: state.widgetOrder,
         peakMentalPowerUntil: state.peakMentalPowerUntil,
+        lastMainExamCompletedAt: state.lastMainExamCompletedAt,
+        lastMainExamScore: state.lastMainExamScore,
+        lastMainExamTitle: state.lastMainExamTitle,
       }),
     }
   )

@@ -2,6 +2,14 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState } from "react";
+import { useNectStore, getActiveRank, rankTiers } from "../store/useNectStore";
+
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+    : "255, 255, 255";
+}
 
 type AuthView = "login" | "signup" | "forgot";
 
@@ -13,6 +21,11 @@ const inputClass =
   "w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500";
 
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
+  const { points, rankOverride } = useNectStore();
+  const accentColor = useMemo(() => {
+    return rankTiers.find((rank) => rank.name === rankOverride)?.color ?? getActiveRank(points).color;
+  }, [rankOverride, points]);
+
   const [authView, setAuthView] = useState<AuthView>("login");
   const [showPassword, setShowPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -44,10 +57,22 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   }
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden bg-[#070814] px-5 py-8 text-slate-100 sm:px-8">
+    <main
+      className="relative flex min-h-screen overflow-hidden bg-[#070814] px-5 py-8 text-slate-100 sm:px-8"
+      style={{
+        "--rank-accent": accentColor,
+        "--rank-accent-rgb": hexToRgb(accentColor),
+        "--rank-accent-glow": `0 0 24px ${accentColor}2d`,
+        "--rank-accent-glow-strong": `0 0 24px ${accentColor}40`,
+        "--rank-accent-glow-subtle": `0 0 28px ${accentColor}1a`,
+      } as React.CSSProperties}
+    >
       <div className="absolute left-1/4 top-1/4 h-80 w-80 rounded-full bg-indigo-500/10 blur-3xl animate-glow-pulse pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl animate-glow-pulse pointer-events-none" />
-      <div className="absolute right-1/3 top-10 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl animate-glow-pulse pointer-events-none" />
+      <div
+        className="absolute right-1/3 top-10 h-72 w-72 rounded-full blur-3xl animate-glow-pulse pointer-events-none"
+        style={{ backgroundColor: "rgba(var(--rank-accent-rgb), 0.1)" }}
+      />
 
       <section className="relative z-10 mx-auto grid w-full max-w-7xl items-center gap-10 lg:grid-cols-[1.08fr_0.92fr]">
         <div className="space-y-8">
@@ -92,7 +117,11 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             ].map((label) => (
               <span
                 key={label}
-                className="rounded-full border border-cyan-300/20 bg-slate-900/50 px-3 py-2 shadow-[0_0_24px_rgba(34,211,238,0.08)]"
+                className="rounded-full bg-slate-900/50 px-3 py-2 border transition-all duration-300"
+                style={{
+                  borderColor: "rgba(var(--rank-accent-rgb), 0.2)",
+                  boxShadow: "var(--rank-accent-glow-subtle)",
+                }}
               >
                 {label}
               </span>
@@ -137,7 +166,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                 <div className="flex justify-end">
                   <button
                     type="button"
-                    className="text-sm font-medium text-cyan-300 transition-colors hover:text-cyan-200"
+                    className="text-sm font-medium transition-colors hover:brightness-110"
+                    style={{ color: "var(--rank-accent)" }}
                     onClick={() => setAuthView("forgot")}
                   >
                     Forgot Password?
@@ -224,7 +254,12 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                 />
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-cyan-600 py-3 font-semibold text-white transition-all duration-200 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.98]"
+                  className="w-full rounded-xl py-3 font-semibold text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] hover:brightness-110"
+                  style={{
+                    backgroundColor: "var(--rank-accent)",
+                    color: accentColor.toLowerCase() === "#ffffff" ? "#000000" : "#ffffff",
+                    boxShadow: "var(--rank-accent-glow-strong)",
+                  }}
                 >
                   Send Reset Link
                 </button>

@@ -569,7 +569,7 @@ export function MoneyModule() {
     return (
       <section className="flex flex-col items-center justify-center py-12 px-4 animate-fade-in-up">
         <div className="relative max-w-md w-full rounded-2xl border border-slate-800/80 bg-slate-900/40 p-8 text-center backdrop-blur-sm shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.2)]">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[var(--rank-accent-glow-strong)]">
             <Wallet className="h-8 w-8 text-[var(--rank-accent)]" />
           </div>
 
@@ -617,7 +617,7 @@ export function MoneyModule() {
 
             <button
               type="submit"
-              className="w-full rounded-xl py-4 font-black uppercase tracking-[0.15em] text-slate-950 bg-[var(--rank-accent)] hover:bg-[var(--rank-accent)]/90 active:scale-95 transition-all duration-100 shadow-[0_0_24px_rgba(34,211,238,0.25)] cursor-pointer"
+              className="w-full rounded-xl py-4 font-black uppercase tracking-[0.15em] text-slate-950 bg-[var(--rank-accent)] hover:bg-[var(--rank-accent)]/90 active:scale-95 transition-all duration-100 shadow-[var(--rank-accent-glow-strong)] cursor-pointer"
             >
               Initialize Account
             </button>
@@ -636,7 +636,7 @@ export function MoneyModule() {
         {/* Top-Left: Module Title & Center Net Liquidity Block */}
         <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm w-full">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[var(--rank-accent-glow-subtle)]">
               <Image
                 src="/assets/icons/money.png"
                 alt="Money module icon"

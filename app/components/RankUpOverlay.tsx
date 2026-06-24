@@ -58,10 +58,17 @@ export function RankUpOverlay() {
           >
             {/* Holographic Ring / Icon */}
             <div 
-              className="flex h-20 w-20 items-center justify-center rounded-full border bg-slate-950/80 mb-6 shadow-lg animate-pulse"
-              style={{ borderColor: newRankDetails.color }}
+              className="flex h-24 w-24 items-center justify-center rounded-2xl border bg-slate-950/90 mb-6 shadow-2xl overflow-hidden"
+              style={{ 
+                borderColor: newRankDetails.color,
+                boxShadow: `0 0 30px ${newRankDetails.color}25`
+              }}
             >
-              <Award className="h-10 w-10 text-[var(--rank-accent)]" />
+              <img
+                src={`/assets/ranks/${newRankDetails.name.toLowerCase()}.svg`}
+                alt={`${newRankDetails.name} Rank Badge`}
+                className="h-16 w-16 object-contain animate-pulse"
+              />
             </div>
 
             <p className="text-2xs font-black uppercase tracking-[0.35em] text-emerald-400">

@@ -142,7 +142,7 @@ export function TaskModule() {
           
           {/* Header icon with PowerUpBoost */}
           <PowerUpBoost moduleKey="Tasks">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[0_0_28px_rgba(34,211,238,0.1)]">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[var(--rank-accent-glow-subtle)]">
               <Image
                 src="/assets/icons/tasks.png"
                 alt="Task module icon"

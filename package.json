@@ -1,6 +1,6 @@
 {
   "name": "nect-app",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "private": true,
   "prisma": {
     "schema": "prisma/schema.prisma"

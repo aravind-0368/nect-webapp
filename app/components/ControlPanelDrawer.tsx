@@ -59,6 +59,15 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
     return rankTiers.filter((tier) => points >= tier.min);
   }, [points]);
 
+  const isWidgetVisible = (widgetName: string) => {
+    if (widgetName === "Resource Flow Engine") return visibleModules.Money;
+    if (widgetName === "Cognitive Synaptic Gateway") return visibleModules.Learning;
+    if (widgetName === "Skill Matrix Hub") return visibleModules.Learning;
+    if (widgetName === "Kinetic Overdrive Matrix") return visibleModules.Workout;
+    if (widgetName === "Bounty Board Nodes") return visibleModules.Tasks;
+    return true;
+  };
+
   const handleSavePassword = (e: FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
@@ -217,11 +226,18 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
                       <p className="text-xs font-semibold text-slate-450 mt-0.5">aravind@nect.local</p>
                       
                       <div className="mt-5 grid gap-3 grid-cols-2">
-                        <div className="rounded-xl border border-slate-850 bg-slate-950/60 p-4">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rank Title</span>
-                          <p className="mt-1.5 text-base font-black uppercase tracking-wider" style={{ color: accentColor }}>
-                            {activeRank.name}
-                          </p>
+                        <div className="rounded-xl border border-slate-850 bg-slate-950/60 p-4 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rank Title</span>
+                            <p className="mt-1.5 text-base font-black uppercase tracking-wider leading-tight" style={{ color: activeRank.color }}>
+                              {activeRank.name}
+                            </p>
+                          </div>
+                          <img
+                            src={`/assets/ranks/${activeRank.name.toLowerCase()}.svg`}
+                            alt={`${activeRank.name} Rank Badge`}
+                            className="h-10 w-10 object-contain ml-2"
+                          />
                         </div>
                         <div className="rounded-xl border border-slate-850 bg-slate-950/60 p-4">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Points</span>
@@ -358,18 +374,56 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
                         </button>
                       </div>
 
-                      <select
-                        className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-3 text-xs text-slate-100 outline-none transition-all focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 disabled:opacity-35"
-                        disabled={lockRankTheme}
-                        value={rankOverride}
-                        onChange={(e) => setRankOverride(e.target.value)}
-                      >
-                        {conqueredRanks.map((rank) => (
-                          <option key={rank.name} value={rank.name}>
-                            🛡️ {rank.name} Theme ({rank.color})
-                          </option>
-                        ))}
-                      </select>
+                      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {rankTiers.map((rank) => {
+                          const isConquered = points >= rank.min;
+                          const isSelected = !lockRankTheme && rankOverride === rank.name;
+                          return (
+                            <button
+                              key={rank.name}
+                              type="button"
+                              disabled={lockRankTheme || !isConquered}
+                              onClick={() => setRankOverride(rank.name)}
+                              className={`relative flex flex-col items-center justify-center p-3.5 rounded-xl border transition-all duration-300 text-center select-none cursor-pointer ${
+                                lockRankTheme 
+                                  ? "opacity-30 cursor-not-allowed border-slate-900 bg-slate-950/10 text-slate-600" 
+                                  : !isConquered
+                                    ? "opacity-45 border-slate-900 bg-slate-950/20 text-slate-600 cursor-not-allowed"
+                                    : isSelected
+                                      ? "bg-slate-900/60 border-slate-700 text-white scale-[1.02]"
+                                      : "bg-slate-950/40 border-slate-850 hover:border-slate-750 text-slate-400 hover:text-slate-200"
+                              }`}
+                              style={{
+                                borderColor: isSelected ? rank.color : undefined,
+                                boxShadow: isSelected ? `0 0 15px ${rank.color}35` : undefined
+                              }}
+                            >
+                              {/* Color bubble / Lock icon */}
+                              <div className="flex items-center justify-center mb-2">
+                                {isConquered ? (
+                                  <div 
+                                    className="h-4.5 w-4.5 rounded-full border border-white/10 transition-transform duration-300"
+                                    style={{ 
+                                      backgroundColor: rank.color,
+                                      boxShadow: isSelected ? `0 0 10px ${rank.color}` : `0 0 4px ${rank.color}50`
+                                    }}
+                                  />
+                                ) : (
+                                  <Lock className="h-3.5 w-3.5 text-slate-650" />
+                                )}
+                              </div>
+
+                              <span className="text-[10px] font-black uppercase tracking-wider block">
+                                {rank.name}
+                              </span>
+                              
+                              <span className="text-[8px] font-mono font-bold text-slate-500 uppercase mt-0.5">
+                                {isConquered ? "Conquered" : "Locked"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     {/* Drag and Drop Widget Reordering Grid */}
@@ -382,26 +436,29 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
                       </p>
 
                       <div className="space-y-2">
-                        {widgetOrder.map((widget, idx) => (
-                          <div
-                            key={widget}
-                            draggable
-                            onDragStart={() => handleDragStart(idx)}
-                            onDragOver={(e) => handleDragOver(e, idx)}
-                            onDrop={() => handleDrop(idx)}
-                            className={`flex items-center gap-3 rounded-xl border p-3 bg-slate-950/60 transition-all cursor-move active:scale-[0.99] select-none ${
-                              draggedIndex === idx 
-                                ? "border-indigo-500/50 bg-indigo-500/5 opacity-50" 
-                                : "border-slate-850 hover:border-slate-700"
-                            }`}
-                          >
-                            <GripVertical className="h-4 w-4 text-slate-650 shrink-0" />
-                            <span className="text-xs font-bold text-slate-200 flex-1">{widget}</span>
-                            <span className="text-[10px] font-black text-slate-500 uppercase">
-                              Pos {idx + 1}
-                            </span>
-                          </div>
-                        ))}
+                        {widgetOrder.map((widget, idx) => {
+                          if (!isWidgetVisible(widget)) return null;
+                          return (
+                            <div
+                              key={widget}
+                              draggable
+                              onDragStart={() => handleDragStart(idx)}
+                              onDragOver={(e) => handleDragOver(e, idx)}
+                              onDrop={() => handleDrop(idx)}
+                              className={`flex items-center gap-3 rounded-xl border p-3 bg-slate-950/60 transition-all cursor-move active:scale-[0.99] select-none ${
+                                draggedIndex === idx 
+                                  ? "border-indigo-500/50 bg-indigo-500/5 opacity-50" 
+                                  : "border-slate-850 hover:border-slate-700"
+                              }`}
+                            >
+                              <GripVertical className="h-4 w-4 text-slate-650 shrink-0" />
+                              <span className="text-xs font-bold text-slate-200 flex-1">{widget}</span>
+                              <span className="text-[10px] font-black text-slate-500 uppercase">
+                                Pos {idx + 1}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
