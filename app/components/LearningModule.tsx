@@ -39,6 +39,8 @@ type ExamRecord = {
   totalMarks: number;
   gainedMarks: number;
   date?: string; // mandatory for Main Exam
+  time?: string;
+  marksLogged?: boolean;
 };
 
 const daysOfWeek: DayName[] = [
@@ -74,10 +76,10 @@ const getFutureDateString = (daysOffset: number) => {
 };
 
 const initialExams: ExamRecord[] = [
-  { id: 1, title: "Data Structures Quiz", isMain: false, totalMarks: 50, gainedMarks: 40 },
-  { id: 2, title: "Algorithms Midterm", isMain: true, totalMarks: 100, gainedMarks: 85, date: getFutureDateString(-15) },
-  { id: 3, title: "Discrete Math Test", isMain: false, totalMarks: 20, gainedMarks: 12 },
-  { id: 4, title: "Systems Midterm", isMain: true, totalMarks: 100, gainedMarks: 92, date: getFutureDateString(-5) },
+  { id: 1, title: "Data Structures Quiz", isMain: false, totalMarks: 50, gainedMarks: 40, marksLogged: true },
+  { id: 2, title: "Algorithms Midterm", isMain: true, totalMarks: 100, gainedMarks: 85, date: getFutureDateString(-15), marksLogged: true },
+  { id: 3, title: "Discrete Math Test", isMain: false, totalMarks: 20, gainedMarks: 12, marksLogged: true },
+  { id: 4, title: "Systems Midterm", isMain: true, totalMarks: 100, gainedMarks: 92, date: getFutureDateString(-5), marksLogged: true },
   { id: 5, title: "AI Engineering Final", isMain: true, totalMarks: 100, gainedMarks: 0, date: getFutureDateString(4) },
 ];
 
@@ -112,17 +114,22 @@ export function LearningModule() {
       const storedSessions = localStorage.getItem("nect_learning_sessions");
       if (storedSessions) loadedSessions = JSON.parse(storedSessions);
 
+      let loadedRevisions = initialRevisions;
+      const storedRevisions = localStorage.getItem("nect_learning_revisions");
+      if (storedRevisions) loadedRevisions = JSON.parse(storedRevisions);
+
       if (lastDate !== todayStr) {
         loadedSessions = [];
+        loadedRevisions = loadedRevisions.map((r: any) => ({ ...r, checked: false }));
         localStorage.setItem("nect_learning_last_date", todayStr);
         localStorage.setItem("nect_learning_sessions", JSON.stringify([]));
+        localStorage.setItem("nect_learning_revisions", JSON.stringify(loadedRevisions));
       }
 
       setSessions(loadedSessions);
+      setRevisions(loadedRevisions);
 
-      const storedRevisions = localStorage.getItem("nect_learning_revisions");
       const storedExams = localStorage.getItem("nect_learning_exams");
-      if (storedRevisions) setRevisions(JSON.parse(storedRevisions));
       if (storedExams) setExams(JSON.parse(storedExams));
       setIsLoaded(true);
     }, 0);
@@ -161,25 +168,114 @@ export function LearningModule() {
   const [isMain, setIsMain] = useState(false);
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
 
+  const [inlineEditActive, setInlineEditActive] = useState(false);
+  const [inlineTitle, setInlineTitle] = useState("");
+  const [inlineDate, setInlineDate] = useState("");
+  const [inlineTime, setInlineTime] = useState("12:00");
+  const [overTotalMarks, setOverTotalMarks] = useState<number>(100);
+  const [overGainedMarks, setOverGainedMarks] = useState<number>(0);
+
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Calculate nearest upcoming Main Exam
   const nearestMainExam = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const upcoming = exams
+    const mapped = exams
       .filter((e) => e.isMain && e.date)
       .map((e) => {
-        const examD = new Date(e.date!);
-        examD.setHours(0, 0, 0, 0);
-        const diffTime = examD.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return { ...e, daysLeft: diffDays, examD };
-      })
-      .filter((e) => e.daysLeft >= 0)
-      .sort((a, b) => a.daysLeft - b.daysLeft);
+        const [year, month, day] = e.date!.split("-").map(Number);
+        const [hours, minutes] = (e.time || "12:00").split(":").map(Number);
+        const targetTime = new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+        const isOver = Date.now() >= targetTime;
+        const diffTime = targetTime - Date.now();
+        const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return { ...e, isOver, targetTime, daysLeft };
+      });
+
+    // 1. First priority: main exams that are completed/today/past (isOver) and NOT yet logged/marked
+    const overUnlogged = mapped
+      .filter((e) => e.isOver && !e.marksLogged)
+      .sort((a, b) => b.targetTime - a.targetTime); // most recent first
+
+    if (overUnlogged.length > 0) {
+      return overUnlogged[0];
+    }
+
+    // 2. Otherwise, nearest upcoming main exam (not over)
+    const upcoming = mapped
+      .filter((e) => !e.isOver)
+      .sort((a, b) => a.targetTime - b.targetTime);
 
     return upcoming.length > 0 ? upcoming[0] : null;
-  }, [exams]);
+  }, [exams, tick]);
+
+  const isNearExam = useMemo(() => {
+    if (!nearestMainExam || nearestMainExam.isOver) return false;
+    const diff = nearestMainExam.targetTime - Date.now();
+    return diff > 0 && diff <= 10 * 24 * 60 * 60 * 1000;
+  }, [nearestMainExam]);
+
+  const countdownText = useMemo(() => {
+    if (!nearestMainExam || nearestMainExam.isOver) return "";
+    const diff = nearestMainExam.targetTime - Date.now();
+    if (diff <= 0) return "0d 0h 0m 0s";
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hrs = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const secs = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    return `${days}d ${hrs}h ${mins}m ${secs}s`;
+  }, [nearestMainExam, tick]);
+
+  const handleSaveInlineExam = () => {
+    if (!inlineTitle.trim() || !inlineDate) return;
+    
+    if (nearestMainExam) {
+      setExams((prev) =>
+        prev.map((e) =>
+          e.id === nearestMainExam.id
+            ? { ...e, title: inlineTitle, date: inlineDate, time: inlineTime }
+            : e
+        )
+      );
+    } else {
+      const newExam: ExamRecord = {
+        id: Date.now(),
+        title: inlineTitle,
+        isMain: true,
+        totalMarks: 100,
+        gainedMarks: 0,
+        date: inlineDate,
+        time: inlineTime,
+      };
+      setExams((prev) => [...prev, newExam]);
+    }
+    setInlineEditActive(false);
+  };
+
+  const handleLogOverExamMarks = (id: number) => {
+    setExams((prev) =>
+      prev.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              totalMarks: overTotalMarks,
+              gainedMarks: overGainedMarks,
+              marksLogged: true,
+            }
+          : e
+      )
+    );
+    setOverTotalMarks(100);
+    setOverGainedMarks(0);
+    setInlineEditActive(false);
+  };
 
   // Aggregate Study Table Hours
   const dailyStudyStats = useMemo(() => {
@@ -346,6 +442,7 @@ export function LearningModule() {
               totalMarks: finalTotalMarks,
               gainedMarks: finalGainedMarks,
               date: examDate || undefined,
+              marksLogged: finalGainedMarks > 0 ? true : item.marksLogged,
             }
             : item
         )
@@ -361,6 +458,7 @@ export function LearningModule() {
         totalMarks: finalTotalMarks,
         gainedMarks: finalGainedMarks,
         date: examDate || undefined,
+        marksLogged: finalGainedMarks > 0,
       };
 
       setExams((curr) => [...curr, newExam]);
@@ -419,7 +517,7 @@ export function LearningModule() {
         name: e.title,
         percentage,
         isMain: e.isMain,
-        tooltipLabel: `${e.title} (${e.isMain ? "Main" : "Quiz"}): ${e.gainedMarks}/${e.totalMarks} (${percentage}%)`,
+        tooltipLabel: `${e.title} (${e.isMain ? "Main Exam" : "Quiz"}): ${e.gainedMarks}/${e.totalMarks} (${percentage}%)`,
       };
     });
   }, [exams]);
@@ -528,58 +626,193 @@ export function LearningModule() {
         </div>
 
         {/* Right header widget: High-Stakes Telemetry Countdown Tag */}
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm flex flex-col justify-center">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-            High-Stakes Telemetry
-          </p>
-          <div className="mt-4">
-            {nearestMainExam ? (
-              <div
-                className={`rounded-xl border p-4 transition-all duration-350 ${nearestMainExam.daysLeft < 10
-                    ? "border-rose-500/40 bg-rose-500/10 text-rose-200 shadow-[0_0_20px_rgba(244,63,94,0.15)] animate-pulse"
-                    : "border-indigo-500/25 bg-indigo-500/10 text-indigo-300"
-                  }`}
+        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-center min-h-[190px] transition-all duration-500 ${
+          isNearExam
+            ? "border-rose-500 bg-rose-955/20 shadow-[0_0_25px_rgba(244,63,94,0.25)]"
+            : "border-slate-800/80 bg-slate-900/40"
+        }`}>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+              High-Stakes Telemetry
+            </p>
+            {!inlineEditActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInlineTitle(nearestMainExam?.title || "");
+                  setInlineDate(nearestMainExam?.date || "");
+                  setInlineTime(nearestMainExam?.time || "12:00");
+                  setInlineEditActive(true);
+                }}
+                className="p-1 rounded bg-slate-950 border border-slate-850 hover:text-indigo-400 text-slate-400 transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                title={nearestMainExam ? "Edit Main Exam" : "Add Main Exam"}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                    {nearestMainExam.daysLeft < 10 ? (
-                      <>
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-[0_0_8px_#f43f5e]"></span>
-                        </span>
-                        Crimson Crisis Alert
-                      </>
-                    ) : (
-                      "Standard Blueprint"
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab("hub");
-                        handleStartEditExam(nearestMainExam);
-                      }}
-                      className="p-1.5 rounded-lg border border-slate-800 bg-slate-955 text-slate-400 hover:text-indigo-400 transition-all cursor-pointer active:scale-95 flex items-center justify-center"
-                      title="Edit Main Exam"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <Calendar className="h-4 w-4 text-slate-400" />
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="mt-4">
+            {inlineEditActive ? (
+              <div className="space-y-3 p-3 rounded-xl border border-indigo-500/25 bg-indigo-500/5 text-indigo-300">
+                <div>
+                  <label className="block text-[9px] font-black uppercase tracking-[0.1em] text-slate-500 mb-1">
+                    Exam Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter exam name"
+                    className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-white outline-none w-full focus:border-indigo-500"
+                    value={inlineTitle}
+                    onChange={(e) => setInlineTitle(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 mb-1">
+                      Exam Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-white outline-none w-full focus:border-indigo-500 cursor-pointer"
+                      value={inlineDate}
+                      onChange={(e) => setInlineDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 mb-1">
+                      Exam Time
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-white outline-none w-full focus:border-indigo-500 cursor-pointer"
+                      value={inlineTime}
+                      onChange={(e) => setInlineTime(e.target.value)}
+                    />
                   </div>
                 </div>
-                <h3 className="mt-3 text-lg font-black text-white">{nearestMainExam.title}</h3>
-                <p className="mt-1 text-sm font-bold">
-                  in <span className="text-2xl font-black">{nearestMainExam.daysLeft}</span> Days
-                </p>
-                <p className="text-[10px] text-slate-400 mt-2">
-                  Exam target date: {nearestMainExam.date}
-                </p>
+                <div className="flex gap-2 justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setInlineEditActive(false)}
+                    className="px-2 py-1 rounded bg-slate-950 border border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveInlineExam}
+                    className="px-2.5 py-1 rounded bg-indigo-955/60 border border-indigo-555/40 text-[10px] font-black uppercase tracking-wider text-indigo-300 hover:bg-indigo-900/55"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
+            ) : nearestMainExam ? (
+              nearestMainExam.isOver ? (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-slate-300 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-450 flex items-center gap-1.5 animate-pulse">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                      </span>
+                      Exam Day Completed
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      {nearestMainExam.date} {nearestMainExam.time || "12:00"}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">{nearestMainExam.title}</h3>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Enter your marks to add this session to your academic performance chart.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <label className="space-y-1 block">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+                        Total Marks
+                      </span>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-white outline-none w-full focus:border-indigo-500"
+                        value={overTotalMarks}
+                        onChange={(e) => setOverTotalMarks(Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="space-y-1 block">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+                        Your Mark
+                      </span>
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        className="rounded-lg border border-slate-800 bg-slate-955 px-2 py-1 text-xs text-white outline-none w-full focus:border-indigo-500"
+                        value={overGainedMarks}
+                        onChange={(e) => setOverGainedMarks(Number(e.target.value))}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleLogOverExamMarks(nearestMainExam.id)}
+                    className="w-full py-2 rounded bg-rose-955/60 border border-rose-555/45 text-[10px] font-black uppercase tracking-wider text-rose-300 hover:bg-rose-900/55 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Award className="h-3.5 w-3.5" />
+                    <span>Add Marks to Chart</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className={`rounded-xl border p-4 transition-all duration-355 ${
+                    isNearExam
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-205 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+                      : "border-indigo-500/25 bg-indigo-500/10 text-indigo-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded flex items-center gap-1.5 ${
+                      isNearExam
+                        ? "bg-rose-550/20 text-rose-300 border border-rose-500/30"
+                        : "bg-indigo-550/20 text-indigo-300 border border-indigo-500/30"
+                    }`}>
+                      {isNearExam ? (
+                        <>
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+                          </span>
+                          <span>Important Exam Coming</span>
+                        </>
+                      ) : (
+                        <span>Important Exam Coming</span>
+                      )}
+                    </span>
+                    {isNearExam && (
+                      <div className="relative flex h-3.5 w-3.5 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-600 shadow-[0_0_12px_#f43f5e]"></span>
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="mt-3 text-lg font-black text-white">{nearestMainExam.title}</h3>
+                  <p className="mt-2 text-xs font-bold text-slate-350">
+                    Remaining: <span className="font-mono text-base sm:text-lg text-white font-black">{countdownText}</span>
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    Exam target date: {nearestMainExam.date} {nearestMainExam.time || "12:00"}
+                  </p>
+                </div>
+              )
             ) : (
               <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-center text-slate-500 text-sm">
-                No upcoming Main Exams registered. Add one in the Exam Hub.
+                No upcoming Main Exams registered. Click the edit icon to add.
               </div>
             )}
           </div>
@@ -1021,11 +1254,10 @@ export function LearningModule() {
                     const percentage = e.totalMarks > 0 ? Math.round((e.gainedMarks / e.totalMarks) * 100) : 0;
                     const isUpcomingMain = (() => {
                       if (!e.isMain || !e.date) return false;
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const examD = new Date(e.date);
-                      examD.setHours(0, 0, 0, 0);
-                      return examD >= today;
+                      const [year, month, day] = e.date.split("-").map(Number);
+                      const [hours, minutes] = (e.time || "12:00").split(":").map(Number);
+                      const targetTime = new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+                      return Date.now() < targetTime && !e.marksLogged;
                     })();
 
                     return (
@@ -1048,7 +1280,7 @@ export function LearningModule() {
                             {e.isMain ? (
                               <>
                                 <Calendar className="h-2.5 w-2.5" />
-                                <span>Important Exam</span>
+                                <span>{isUpcomingMain ? "Important Exam" : "Main Exam"}</span>
                               </>
                             ) : (
                               <span>Basic Exam</span>
@@ -1058,19 +1290,19 @@ export function LearningModule() {
                             {e.title}
                           </h4>
                           {e.date && <p className="text-[10px] text-slate-500 mt-0.5">Date: {e.date}</p>}
-                          {isUpcomingMain ? (
+                          {e.marksLogged ? (
+                            <p className="text-xs font-mono font-black text-slate-300 mt-2">
+                              Score: <span className={percentage >= 80 ? "text-emerald-400" : percentage >= 50 ? "text-amber-450" : "text-rose-450"}>
+                                {e.gainedMarks}/{e.totalMarks} ({percentage}%)
+                              </span>
+                            </p>
+                          ) : (
                             <p className="text-xs font-bold text-purple-400 mt-2 flex items-center gap-1">
                               <span className="relative flex h-1.5 w-1.5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-450 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500"></span>
                               </span>
-                              Scheduled
-                            </p>
-                          ) : (
-                            <p className="text-xs font-mono font-black text-slate-300 mt-2">
-                              Score: <span className={percentage >= 80 ? "text-emerald-400" : percentage >= 50 ? "text-amber-450" : "text-rose-450"}>
-                                {e.gainedMarks}/{e.totalMarks} ({percentage}%)
-                              </span>
+                              {e.date && Date.now() >= new Date(e.date + "T" + (e.time || "12:00")).getTime() ? "Mark Pending" : "Scheduled"}
                             </p>
                           )}
                         </div>

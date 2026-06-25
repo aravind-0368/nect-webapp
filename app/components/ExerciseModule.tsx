@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
-import { Flame, Hourglass, Layers, Milestone, Scale, Ruler, Activity, User, Check } from "lucide-react";
+import { Flame, Hourglass, Layers, Milestone, Scale, Ruler, Activity, User, Check, Moon, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
 import { useNectStore } from "../store/useNectStore";
 import { FireStreak } from "./FireStreak";
@@ -141,7 +141,7 @@ export function ExerciseModule({
   proteinActivityFactor?: "Sedentary" | "Active" | "Strength";
   setProteinActivityFactor?: (f: "Sedentary" | "Active" | "Strength") => void;
 } = {}) {
-  const [activeView, setActiveView] = useState<"today" | "weekly" | "profile">("today");
+  const [activeView, setActiveView] = useState<"today" | "weekly" | "profile" | "sports">("today");
   const [selectedDay, setSelectedDay] = useState<DayName>(todayName);
   const [restDays, setRestDays] = useState<Record<DayName, boolean>>({
     Monday: false,
@@ -154,6 +154,8 @@ export function ExerciseModule({
   });
   const [workoutItems, setWorkoutItems] = useState(initialWorkoutItems);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [sleepLogs, setSleepLogs] = useState<any[]>([]);
+  const [sportsList, setSportsList] = useState<any[]>([]);
 
   // Zustand state
   const {
@@ -167,8 +169,46 @@ export function ExerciseModule({
     const timer = setTimeout(() => {
       const storedWorkouts = localStorage.getItem("nect_workout_items");
       const storedRest = localStorage.getItem("nect_workout_rest_days");
-      if (storedWorkouts) setWorkoutItems(JSON.parse(storedWorkouts));
+      const storedLogs = localStorage.getItem("nect_workout_sleep_logs");
+      const storedSports = localStorage.getItem("nect_workout_sports_list");
+      if (storedWorkouts) {
+        let parsed = JSON.parse(storedWorkouts);
+        const getStartOfWeek = () => {
+          const now = new Date();
+          const day = now.getDay();
+          const diff = now.getDate() - day;
+          const sunday = new Date(now.setDate(diff));
+          sunday.setHours(0, 0, 0, 0);
+          return sunday.getTime();
+        };
+        const lastReset = localStorage.getItem("nect_workout_last_reset_week");
+        const currentWeekStart = getStartOfWeek();
+        if (!lastReset || parseInt(lastReset) < currentWeekStart) {
+          parsed = parsed.map((item: any) => ({
+            ...item,
+            checkedSets: item.checkedSets ? item.checkedSets.map(() => false) : Array.from({ length: item.sets || 3 }, () => false),
+            completed: false
+          }));
+          localStorage.setItem("nect_workout_items", JSON.stringify(parsed));
+          localStorage.setItem("nect_workout_last_reset_week", currentWeekStart.toString());
+        }
+        setWorkoutItems(parsed);
+      }
       if (storedRest) setRestDays(JSON.parse(storedRest));
+      if (storedLogs) {
+        try {
+          setSleepLogs(JSON.parse(storedLogs));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      if (storedSports) {
+        try {
+          setSportsList(JSON.parse(storedSports));
+        } catch (e) {
+          console.error(e);
+        }
+      }
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
@@ -215,6 +255,66 @@ export function ExerciseModule({
   const isTodayRest = restDays[todayName];
   const bmi = height > 0 ? weight / (height / 100) ** 2 : 0;
   const bmiMeta = getBmiMeta(bmi);
+
+  const calculatedSleepDuration = useMemo(() => {
+    if (sleepLogs.length === 0) return null;
+    const sorted = [...sleepLogs].sort((a, b) => b.timestamp - a.timestamp);
+    const latest = sorted[0];
+    if (!latest || !latest.timestamp) return null;
+
+    // Check if the log is older than 24 hours
+    const ageMs = Date.now() - latest.timestamp;
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      return null;
+    }
+
+    const sleepTotal = latest.sleepHour * 60 + latest.sleepMin;
+    const wakeTotal = latest.wakeHour * 60 + latest.wakeMin;
+
+    let diffMinutes = 0;
+    if (wakeTotal >= sleepTotal) {
+      diffMinutes = wakeTotal - sleepTotal;
+    } else {
+      diffMinutes = (24 * 60 - sleepTotal) + wakeTotal;
+    }
+
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    return `${hours}h ${mins}m`;
+  }, [sleepLogs]);
+
+  const todaysSports = useMemo(() => {
+    const targetDateStr = getWeekdayDateInCurrentWeek(todayName);
+
+    return sportsList.filter((sport) => {
+      if (sport.day !== todayName) return false;
+      if (sport.repeatWeekly) return true;
+      return sport.dateLogged === targetDateStr;
+    });
+  }, [sportsList, todayName]);
+
+  const handleToggleSportCompleted = (id: number) => {
+    const todayDateStr = new Date().toISOString().split("T")[0];
+    const updated = sportsList.map((sport) => {
+      if (sport.id !== id) return sport;
+
+      if (sport.repeatWeekly) {
+        const isCurrentlyCompleted = sport.lastCompletedDate === todayDateStr;
+        return {
+          ...sport,
+          lastCompletedDate: isCurrentlyCompleted ? "" : todayDateStr,
+        };
+      } else {
+        return {
+          ...sport,
+          completed: !sport.completed,
+        };
+      }
+    });
+
+    setSportsList(updated);
+    localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+  };
 
   const daySummaries = useMemo(
     () =>
@@ -326,13 +426,21 @@ export function ExerciseModule({
         {/* Dynamic Telemetry / Status Row */}
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 pt-5 border-t border-slate-800/80">
           {/* Streak Indicator */}
-          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+          <div className="relative flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50 overflow-hidden">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
               <Flame className="h-5 w-5 animate-pulse" style={{ color: "var(--rank-accent)" }} />
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Power Streak</p>
-              <p className="text-sm font-black text-white">{powerStreak} Days</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Power Streak</p>
+                {calculatedSleepDuration && (
+                  <span className="inline-flex items-center gap-1 rounded bg-indigo-950/50 border border-indigo-500/30 px-1.5 py-0.5 text-[9px] font-black text-indigo-300 shrink-0">
+                    <Moon className="h-2.5 w-2.5 text-indigo-400" />
+                    <span>{calculatedSleepDuration}</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-sm font-black text-white mt-0.5">{powerStreak} Days</p>
             </div>
           </div>
 
@@ -382,13 +490,14 @@ export function ExerciseModule({
         )}
       </div>
 
-      {/* Navigation Tabs (3 buttons: Today, Weekly plan, Body Profile) */}
+      {/* Navigation Tabs (4 buttons: Today, Weekly plan, Body Profile, Sports) */}
       <div className="flex justify-start">
         <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-950/55 p-1">
           {[
             { id: "today" as const, label: "Today", icon: Hourglass },
             { id: "weekly" as const, label: "Weekly plan", icon: Layers },
             { id: "profile" as const, label: "Body Profile", icon: User },
+            { id: "sports" as const, label: "Sports", icon: Trophy },
           ].map((view) => {
             const Icon = view.icon;
             return (
@@ -418,6 +527,41 @@ export function ExerciseModule({
               items={todaysItems}
               onToggleWorkoutCompleted={toggleWorkoutCompleted}
               todayName={todayName}
+              todaysSports={todaysSports}
+              onToggleSportCompleted={handleToggleSportCompleted}
+            />
+          </div>
+        )}
+
+        {activeView === "sports" && (
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 backdrop-blur-sm sm:p-6">
+            <SportsView
+              sportsList={sportsList}
+              onAddSport={(name, hours, minutes, day, repeatWeekly) => {
+                const dateStr = getWeekdayDateInCurrentWeek(day);
+                
+                const newSport = {
+                  id: Date.now(),
+                  name,
+                  hours,
+                  minutes,
+                  day,
+                  repeatWeekly,
+                  completed: false,
+                  lastCompletedDate: "",
+                  dateLogged: dateStr,
+                  timestamp: Date.now(),
+                };
+                
+                const updated = [...sportsList, newSport];
+                setSportsList(updated);
+                localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+              }}
+              onDeleteSport={(id) => {
+                const updated = sportsList.filter((s) => s.id !== id);
+                setSportsList(updated);
+                localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+              }}
             />
           </div>
         )}
@@ -446,7 +590,7 @@ export function ExerciseModule({
         )}
 
         {activeView === "profile" && (
-          <div className="max-w-2xl mx-auto">
+          <div className="space-y-8 w-full max-w-6xl mx-auto">
             <HealthTelemetry
               bmi={bmi}
               bmiMeta={bmiMeta}
@@ -462,6 +606,22 @@ export function ExerciseModule({
               setActivityMultiplier={setActivityMultiplier}
               proteinActivityFactor={proteinActivityFactor}
               setProteinActivityFactor={setProteinActivityFactor}
+            />
+            <SleepLoggerSegment
+              sleepLogs={sleepLogs}
+              onSaveSleep={(day, sH, sM, wH, wM) => {
+                const newLog = {
+                  day,
+                  sleepHour: sH,
+                  sleepMin: sM,
+                  wakeHour: wH,
+                  wakeMin: wM,
+                  timestamp: Date.now(),
+                };
+                const updated = [...sleepLogs.filter((log) => log.day !== day), newLog];
+                setSleepLogs(updated);
+                localStorage.setItem("nect_workout_sleep_logs", JSON.stringify(updated));
+              }}
             />
           </div>
         )}
@@ -506,100 +666,83 @@ function HealthTelemetry({
       <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
         Add Your Info
       </p>
-      <div className="mt-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Weight kg
-            </span>
-            <input
-              className={`${fieldClass} w-full`}
-              min={1}
-              type="number"
-              value={weight}
-              onChange={(event) => setWeight(Number(event.target.value))}
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Height cm
-            </span>
-            <input
-              className={`${fieldClass} w-full`}
-              min={1}
-              type="number"
-              value={height}
-              onChange={(event) => setHeight(Number(event.target.value))}
-            />
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Age (Years)
-            </span>
-            <input
-              className={`${fieldClass} w-full`}
-              min={1}
-              type="number"
-              value={age}
-              onChange={(event) => setAge(Number(event.target.value))}
-            />
-          </label>
-          <label className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Biological Sex
-            </span>
-            <select
-              className={`${fieldClass} w-full`}
-              value={biologicalSex}
-              onChange={(event) => setBiologicalSex(event.target.value as "Men" | "Women")}
-            >
-              <option value="Men">Men</option>
-              <option value="Women">Women</option>
-            </select>
-          </label>
-        </div>
-
-        <label className="block space-y-2">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Activity Level
-            </span>
-            <span className="text-xs text-slate-400 mt-0.5">
-              How active are you daily?
-            </span>
-          </div>
-          <select
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Weight kg
+          </span>
+          <input
             className={`${fieldClass} w-full`}
+            min={1}
+            type="number"
+            value={weight}
+            onChange={(event) => setWeight(Number(event.target.value))}
+          />
+        </label>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Height cm
+          </span>
+          <input
+            className={`${fieldClass} w-full`}
+            min={1}
+            type="number"
+            value={height}
+            onChange={(event) => setHeight(Number(event.target.value))}
+          />
+        </label>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Age (Years)
+          </span>
+          <input
+            className={`${fieldClass} w-full`}
+            min={1}
+            type="number"
+            value={age}
+            onChange={(event) => setAge(Number(event.target.value))}
+          />
+        </label>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Biological Sex
+          </span>
+          <select
+            className={`${fieldClass} w-full cursor-pointer`}
+            value={biologicalSex}
+            onChange={(event) => setBiologicalSex(event.target.value as "Men" | "Women")}
+          >
+            <option value="Men">Men</option>
+            <option value="Women">Women</option>
+          </select>
+        </label>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 block">
+            Activity Level
+          </span>
+          <select
+            className={`${fieldClass} w-full cursor-pointer`}
             value={activityMultiplier}
             onChange={(event) => setActivityMultiplier(event.target.value as any)}
           >
-            <option value="Sedentary">Desk Job / Sedentary</option>
-            <option value="Lightly Active">Light Walking / On Your Feet</option>
-            <option value="Moderately Active">Workout 3–5 Times a Week</option>
-            <option value="Very Active">Heavy Daily Training / Hard Labor</option>
+            <option value="Sedentary">Sedentary</option>
+            <option value="Lightly Active">Lightly Active</option>
+            <option value="Moderately Active">Moderately Active</option>
+            <option value="Very Active">Very Active</option>
           </select>
         </label>
-
-        <label className="block space-y-2">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Protein Factor
-            </span>
-            <span className="text-xs text-slate-400 mt-0.5">
-              What is your primary training focus right now?
-            </span>
-          </div>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 block">
+            Protein Factor
+          </span>
           <select
-            className={`${fieldClass} w-full`}
+            className={`${fieldClass} w-full cursor-pointer`}
             value={proteinActivityFactor}
             onChange={(event) => setProteinActivityFactor(event.target.value as any)}
           >
-            <option value="Sedentary">General Health & Maintenance</option>
-            <option value="Active">Stamina & Endurance</option>
-            <option value="Strength">Build Muscle & Strength</option>
+            <option value="Sedentary">General Health</option>
+            <option value="Active">Stamina</option>
+            <option value="Strength">Strength</option>
           </select>
         </label>
       </div>
@@ -618,30 +761,180 @@ function HealthTelemetry({
   );
 }
 
+function SleepLoggerSegment({
+  sleepLogs,
+  onSaveSleep,
+}: {
+  sleepLogs: any[];
+  onSaveSleep: (day: DayName, sleepHour: number, sleepMin: number, wakeHour: number, wakeMin: number) => void;
+}) {
+  const dayNamesMapping: DayName[] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+
+  const todayIndex = new Date().getDay();
+  const yesterdayIndex = todayIndex === 0 ? 6 : todayIndex - 1;
+  const yesterdayName = dayNamesMapping[yesterdayIndex];
+  const todayName = dayNamesMapping[todayIndex];
+  
+  const [sleepTime, setSleepTime] = useState("22:00");
+  const [wakeTime, setWakeTime] = useState("06:00");
+
+  const formatNumber = (num: number) => num.toString().padStart(2, "0");
+
+  const handleSave = (e: FormEvent) => {
+    e.preventDefault();
+    const [sHour, sMin] = sleepTime.split(":").map(Number);
+    const [wHour, wMin] = wakeTime.split(":").map(Number);
+    onSaveSleep(todayName, sHour, sMin, wHour, wMin);
+  };
+
+  const currentDayLog = sleepLogs.find((l) => l.day === todayName);
+
+  return (
+    <aside className="rounded-2xl border border-slate-800/80 bg-slate-900/45 p-6 backdrop-blur-sm">
+      <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+        Log Sleep
+      </p>
+
+      <form onSubmit={handleSave} className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 block">
+            Slept Time ({yesterdayName}) (24h)
+          </span>
+          <input
+            type="time"
+            required
+            className={`${fieldClass} w-full cursor-pointer`}
+            value={sleepTime}
+            onChange={(e) => setSleepTime(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 block">
+            Woke Up Time ({todayName}) (24h)
+          </span>
+          <input
+            type="time"
+            required
+            className={`${fieldClass} w-full cursor-pointer`}
+            value={wakeTime}
+            onChange={(e) => setWakeTime(e.target.value)}
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="w-full rounded-xl bg-indigo-950/40 border border-indigo-550/30 hover:bg-indigo-900/50 py-3 text-xs font-black uppercase tracking-wider text-white transition-all cursor-pointer active:scale-95 h-[46px] flex items-center justify-center"
+        >
+          Save Sleep Log
+        </button>
+      </form>
+
+      {currentDayLog && (
+        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between text-xs text-slate-400">
+          <div>
+            <p className="font-bold text-slate-350">Logged for Today ({todayName}):</p>
+            <p className="mt-1 font-mono text-[11px]">
+              Slept ({yesterdayName}): {formatNumber(currentDayLog.sleepHour)}:{formatNumber(currentDayLog.sleepMin)} | Woke ({todayName}): {formatNumber(currentDayLog.wakeHour)}:{formatNumber(currentDayLog.wakeMin)}
+            </p>
+          </div>
+          <div className="flex items-center gap-1 bg-indigo-950/30 border border-indigo-500/20 rounded px-2 py-1 text-indigo-300 font-bold shrink-0">
+            <Moon className="h-3 w-3" />
+            <span>
+              {(() => {
+                const sTotal = currentDayLog.sleepHour * 60 + currentDayLog.sleepMin;
+                const wTotal = currentDayLog.wakeHour * 60 + currentDayLog.wakeMin;
+                let diff = wTotal >= sTotal ? wTotal - sTotal : (24 * 60 - sTotal) + wTotal;
+                return `${Math.floor(diff / 60)}h ${diff % 60}m`;
+              })()}
+            </span>
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+}
+
 function TodayWorkoutView({
   isRestDay,
   items,
   onToggleWorkoutCompleted,
   todayName,
+  todaysSports,
+  onToggleSportCompleted,
 }: {
   isRestDay: boolean;
   items: WorkoutItem[];
   onToggleWorkoutCompleted: (itemId: number) => void;
   todayName: DayName;
+  todaysSports: any[];
+  onToggleSportCompleted: (id: number) => void;
 }) {
   if (isRestDay) {
     return (
-      <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/45 p-8 text-center">
-        <p className="text-sm font-bold uppercase tracking-[0.22em] text-emerald-300">
-          {todayName}
-        </p>
-        <h2 className="mt-4 text-3xl font-black text-white">
-          Active Rest Day
-        </h2>
-        <p className="mt-3 max-w-xl text-slate-400">
-          Your streak is completely protected. Recover, hydrate, and bridge the
-          streak safely into the next active workout day.
-        </p>
+      <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/45 p-8 text-center space-y-6">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.22em] text-emerald-300">
+            {todayName}
+          </p>
+          <h2 className="mt-4 text-3xl font-black text-white">
+            Active Rest Day
+          </h2>
+          <p className="mt-3 max-w-xl text-slate-400">
+            Your streak is completely protected. Recover, hydrate, and bridge the
+            streak safely into the next active workout day.
+          </p>
+        </div>
+
+        {/* Today's Sports Section for Rest Day */}
+        {todaysSports.length > 0 && (
+          <div className="w-full max-w-xl text-left flex flex-wrap gap-2.5 p-4 rounded-2xl border border-slate-800/80 bg-slate-950/30">
+            <div className="w-full text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 mb-1">
+              Extra Sports Activities
+            </div>
+            {todaysSports.map((sport) => {
+              const todayDateStr = new Date().toISOString().split("T")[0];
+              const isCompleted = sport.repeatWeekly 
+                ? sport.lastCompletedDate === todayDateStr 
+                : sport.completed;
+              return (
+                <div 
+                  key={sport.id} 
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${
+                    isCompleted 
+                      ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400" 
+                      : "border-slate-800 text-slate-300"
+                  }`}
+                >
+                  <Trophy className={`h-3.5 w-3.5 ${isCompleted ? "text-emerald-405" : "text-indigo-400"}`} />
+                  <span>
+                    Extra Sports : <strong className="text-white">{sport.name}</strong> ({sport.hours}h {sport.minutes}m)
+                  </span>
+                  <span className="text-slate-500">•</span>
+                  <button
+                    type="button"
+                    onClick={() => onToggleSportCompleted(sport.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${
+                      isCompleted 
+                        ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" 
+                        : "bg-indigo-950/40 border border-indigo-550/30 text-indigo-300 hover:bg-indigo-900/50"
+                    }`}
+                  >
+                    {isCompleted ? "Completed" : "Mark Done"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -658,6 +951,48 @@ function TodayWorkoutView({
           </h2>
         </div>
       </div>
+
+      {/* Today's Sports Section */}
+      {todaysSports.length > 0 && (
+        <div className="flex flex-wrap gap-2.5 p-4 rounded-2xl border border-slate-800/80 bg-slate-950/30">
+          <div className="w-full text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 mb-1">
+            Extra Sports Activities
+          </div>
+          {todaysSports.map((sport) => {
+            const todayDateStr = new Date().toISOString().split("T")[0];
+            const isCompleted = sport.repeatWeekly 
+              ? sport.lastCompletedDate === todayDateStr 
+              : sport.completed;
+            return (
+              <div 
+                key={sport.id} 
+                className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${
+                  isCompleted 
+                    ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400" 
+                    : "border-slate-800 text-slate-300"
+                }`}
+              >
+                <Trophy className={`h-3.5 w-3.5 ${isCompleted ? "text-emerald-405" : "text-indigo-400"}`} />
+                <span>
+                  Extra Sports : <strong className="text-white">{sport.name}</strong> ({sport.hours}h {sport.minutes}m)
+                </span>
+                <span className="text-slate-500">•</span>
+                <button
+                  type="button"
+                  onClick={() => onToggleSportCompleted(sport.id)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${
+                    isCompleted 
+                      ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" 
+                      : "bg-indigo-950/40 border border-indigo-550/30 text-indigo-300 hover:bg-indigo-900/50"
+                  }`}
+                >
+                  {isCompleted ? "Completed" : "Mark Done"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-8 text-center text-slate-400">
@@ -1001,4 +1336,239 @@ function getBmiMeta(bmi: number) {
     label: "OVERWEIGHT",
     className: "text-amber-400 bg-amber-500/10",
   };
+}
+
+function getWeekdayDateInCurrentWeek(targetDay: DayName): string {
+  const dayNamesMapping: DayName[] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  const today = new Date();
+  const currentDayIndex = today.getDay(); // 0 (Sun) to 6 (Sat)
+  const targetDayIndex = dayNamesMapping.indexOf(targetDay);
+  
+  const diffDays = targetDayIndex - currentDayIndex;
+  const targetDate = new Date(today);
+  targetDate.setDate(today.getDate() + diffDays);
+  return targetDate.toISOString().split("T")[0];
+}
+
+function SportsView({
+  sportsList,
+  onAddSport,
+  onDeleteSport,
+}: {
+  sportsList: any[];
+  onAddSport: (name: string, hours: number, minutes: number, day: DayName, repeatWeekly: boolean) => void;
+  onDeleteSport: (id: number) => void;
+}) {
+  const [sportName, setSportName] = useState("");
+  const [hours, setHours] = useState(1);
+  const [minutes, setMinutes] = useState(0);
+  
+  const dayNamesMapping: DayName[] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  
+  const [selectedDay, setSelectedDay] = useState<DayName>(() => {
+    const dayIndex = new Date().getDay();
+    return dayNamesMapping[dayIndex];
+  });
+  
+  const [repeatWeekly, setRepeatWeekly] = useState(true);
+
+  const daysOfWeek: DayName[] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ];
+
+  const handleAdd = (e: FormEvent) => {
+    e.preventDefault();
+    const finalName = sportName.trim();
+    if (!finalName) return;
+    onAddSport(finalName, hours, minutes, selectedDay, repeatWeekly);
+    setSportName("");
+    setHours(1);
+    setMinutes(0);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--rank-accent)]">
+            Sports Registry
+          </p>
+          <h2 className="mt-2 text-2xl font-black text-white uppercase tracking-wider">
+            Log Extra Sports
+          </h2>
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
+        <aside className="rounded-2xl border border-slate-800/80 bg-slate-900/45 p-6 backdrop-blur-sm">
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+            Add Sport Session
+          </p>
+          <form onSubmit={handleAdd} className="mt-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Sport Name
+                </span>
+                <input
+                  className={`${fieldClass} w-full`}
+                  type="text"
+                  required
+                  placeholder="e.g. Football, Swimming"
+                  value={sportName}
+                  onChange={(e) => setSportName(e.target.value)}
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Select Day
+                </span>
+                <select
+                  className={`${fieldClass} w-full`}
+                  value={selectedDay}
+                  onChange={(e) => setSelectedDay(e.target.value as DayName)}
+                >
+                  {daysOfWeek.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 block">
+                Time Spent Playing
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Hr</span>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    max={23}
+                    className={`${fieldClass} w-full`}
+                    value={hours}
+                    onChange={(e) => setHours(Math.max(0, Math.min(23, Number(e.target.value))))}
+                  />
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Min</span>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    max={59}
+                    className={`${fieldClass} w-full`}
+                    value={minutes}
+                    onChange={(e) => setMinutes(Math.max(0, Math.min(59, Number(e.target.value))))}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={repeatWeekly}
+                onChange={(e) => setRepeatWeekly(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-650 focus:ring-indigo-500 focus:ring-offset-slate-900 focus:ring-2 cursor-pointer"
+              />
+              <div className="flex flex-col">
+                <span className="text-xs font-black text-white uppercase tracking-wider">
+                  Repeat Every Week
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5">
+                  If unchecked, it will only display during the current week.
+                </span>
+              </div>
+            </label>
+
+            <button
+              type="submit"
+              className="w-full rounded-xl bg-indigo-950/40 border border-indigo-550/30 hover:bg-indigo-900/50 py-3 text-xs font-black uppercase tracking-wider text-white transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Trophy className="h-4 w-4 text-[var(--rank-accent)]" />
+              <span>Add Sport Session</span>
+            </button>
+          </form>
+        </aside>
+
+        <div className="space-y-4">
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">
+            Registered Sports Cards
+          </p>
+
+          {sportsList.length === 0 ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-8 text-center text-slate-500 text-sm">
+              No sports registry recorded. Log a sport session on the left to start.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-1 overflow-y-auto max-h-[420px] pr-1">
+              {sportsList.map((sport) => (
+                <div
+                  key={sport.id}
+                  className="rounded-xl border border-slate-800 bg-slate-950/30 p-4 flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center text-indigo-400 shrink-0">
+                      <Trophy className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-white text-sm uppercase tracking-wide">
+                        {sport.name}
+                      </h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5 font-bold uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
+                        <span>{sport.day}</span>
+                        <span>•</span>
+                        <span>{sport.hours}h {sport.minutes}m</span>
+                        <span>•</span>
+                        <span className={`px-1 rounded text-[8px] ${sport.repeatWeekly ? "bg-indigo-950 text-indigo-300 border border-indigo-500/20" : "bg-amber-950 text-amber-300 border border-amber-500/20"}`}>
+                          {sport.repeatWeekly ? "Weekly" : "One-off"}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSport(sport.id)}
+                    className="text-2xs font-black uppercase tracking-wider text-rose-400 hover:text-rose-300 transition-colors px-2 py-1 rounded bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/10 cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

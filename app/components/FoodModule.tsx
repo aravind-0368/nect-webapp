@@ -333,35 +333,50 @@ export function FoodModule({
           </div>
 
           {/* Calories Indicator */}
-          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50 w-full overflow-hidden">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
               <Zap className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Calories</p>
-              <p className="text-sm font-black text-white">{totals.calories} kcal</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Calories</p>
+                <span className="inline-flex items-center rounded bg-emerald-950/50 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-300 shrink-0">
+                  Target: {caloriesTarget} kcal
+                </span>
+              </div>
+              <p className="text-sm font-black text-white mt-0.5">{totals.calories} kcal</p>
             </div>
           </div>
 
           {/* Protein Indicator */}
-          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50 w-full overflow-hidden">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
               <Beef className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Protein</p>
-              <p className="text-sm font-black text-white">{totals.protein.toFixed(2)}g</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Protein</p>
+                <span className="inline-flex items-center rounded bg-emerald-950/50 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-300 shrink-0">
+                  Target: {proteinTarget}g
+                </span>
+              </div>
+              <p className="text-sm font-black text-white mt-0.5">{totals.protein.toFixed(1)}g</p>
             </div>
           </div>
 
           {/* Fiber Indicator */}
-          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
-            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center">
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50 w-full overflow-hidden">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
               <Leaf className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fiber</p>
-              <p className="text-sm font-black text-white">{totals.fiber.toFixed(2)}g</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Fiber</p>
+                <span className="inline-flex items-center rounded bg-emerald-950/50 border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-300 shrink-0">
+                  Target: {fiberTarget}g
+                </span>
+              </div>
+              <p className="text-sm font-black text-white mt-0.5">{totals.fiber.toFixed(1)}g</p>
             </div>
           </div>
         </div>
@@ -584,9 +599,6 @@ export function FoodModule({
                     {totals.fiber.toFixed(2)}g
                   </span>
                 </span>
-
-
-
                 {allTargetsMet && (
                   <button
                     type="button"
@@ -649,12 +661,12 @@ export function FoodModule({
                           </td>
                           <td className="py-3 px-4 text-slate-300 font-mono text-sm">
                             <span>
-                              {itemProtein.toFixed(2)}g
+                              {itemProtein.toFixed(1)}g
                             </span>
                           </td>
                           <td className="py-3 px-4 text-slate-300 font-mono text-sm">
                             <span>
-                              {itemFiber.toFixed(2)}g
+                              {itemFiber.toFixed(1)}g
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
@@ -674,9 +686,9 @@ export function FoodModule({
                 </table>
               </div>
             )}
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
   );
 }

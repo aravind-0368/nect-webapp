@@ -5,7 +5,7 @@ import {
   AlertTriangle, AlertCircle, BookOpen, Flame, Zap, Apple, Beef,
   Brain, Dumbbell, Utensils, DollarSign, ListTodo,
   Calendar, CheckSquare, Square, RefreshCw, Leaf, BicepsFlexed,
-  Timer
+  Timer, Moon, TrendingUp
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -16,7 +16,15 @@ import {
   YAxis,
   Tooltip,
   RadialBarChart,
-  RadialBar
+  RadialBar,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  LineChart,
+  Line
 } from "recharts";
 import { useNectStore, getActiveRank } from "../store/useNectStore";
 
@@ -52,6 +60,7 @@ interface WorkoutItem {
   reps: number;
   sets: number;
   checkedSets: boolean[];
+  completed?: boolean;
 }
 
 interface StudySession {
@@ -165,6 +174,10 @@ export function DashboardModule({
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [revisions, setRevisions] = useState<RevisionSubject[]>([]);
   const [exams, setExams] = useState<ExamRecord[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<any[]>([]);
+  const [workoutChartTab, setWorkoutChartTab] = useState<"day" | "bodypart">("day");
+  const [telemetryHistory, setTelemetryHistory] = useState<any[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Food variables
   const [foodPlate, setFoodPlate] = useState<{
@@ -228,22 +241,203 @@ export function DashboardModule({
 
       const storedWorkouts = localStorage.getItem("nect_workout_items");
       const storedRest = localStorage.getItem("nect_workout_rest_days");
-      if (storedWorkouts) setWorkouts(JSON.parse(storedWorkouts));
+      if (storedWorkouts) {
+        let parsed = JSON.parse(storedWorkouts);
+        const getStartOfWeek = () => {
+          const now = new Date();
+          const day = now.getDay();
+          const diff = now.getDate() - day;
+          const sunday = new Date(now.setDate(diff));
+          sunday.setHours(0, 0, 0, 0);
+          return sunday.getTime();
+        };
+        const lastReset = localStorage.getItem("nect_workout_last_reset_week");
+        const currentWeekStart = getStartOfWeek();
+        if (!lastReset || parseInt(lastReset) < currentWeekStart) {
+          parsed = parsed.map((item: any) => ({
+            ...item,
+            checkedSets: item.checkedSets ? item.checkedSets.map(() => false) : Array.from({ length: item.sets || 3 }, () => false),
+            completed: false
+          }));
+          localStorage.setItem("nect_workout_items", JSON.stringify(parsed));
+          localStorage.setItem("nect_workout_last_reset_week", currentWeekStart.toString());
+        }
+        setWorkouts(parsed);
+      }
       if (storedRest) setRestDays(JSON.parse(storedRest));
+
+      const storedLogs = localStorage.getItem("nect_workout_sleep_logs");
+      if (storedLogs) {
+        try {
+          setSleepLogs(JSON.parse(storedLogs));
+        } catch (e) {
+          console.error(e);
+        }
+      }
 
       const storedSessions = localStorage.getItem("nect_learning_sessions");
       const storedRevs = localStorage.getItem("nect_learning_revisions");
       const storedExams = localStorage.getItem("nect_learning_exams");
-      if (storedSessions) setSessions(JSON.parse(storedSessions));
-      if (storedRevs) setRevisions(JSON.parse(storedRevs));
+      const lastLearningDate = localStorage.getItem("nect_learning_last_date");
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      let parsedSessions = storedSessions ? JSON.parse(storedSessions) : [];
+      let parsedRevs = storedRevs ? JSON.parse(storedRevs) : [];
+
+      if (lastLearningDate !== todayStr) {
+        parsedSessions = [];
+        parsedRevs = parsedRevs.map((r: any) => ({ ...r, checked: false }));
+        localStorage.setItem("nect_learning_last_date", todayStr);
+        localStorage.setItem("nect_learning_sessions", JSON.stringify([]));
+        localStorage.setItem("nect_learning_revisions", JSON.stringify(parsedRevs));
+      }
+
+      setSessions(parsedSessions);
+      setRevisions(parsedRevs);
       if (storedExams) setExams(JSON.parse(storedExams));
 
       const storedPlate = localStorage.getItem("nect_food_plate_items");
       if (storedPlate) setFoodPlate(JSON.parse(storedPlate));
+
+      const storedHistory = localStorage.getItem("nect_telemetry_history");
+      let parsedHistory = [];
+      if (storedHistory) {
+        try {
+          parsedHistory = JSON.parse(storedHistory);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      const hasOldStructure = parsedHistory.length > 0 && !parsedHistory[0].hasOwnProperty("ageLabel");
+      if (parsedHistory.length === 0 || hasOldStructure) {
+        const seed = [];
+        const baseAge = age || 25;
+        for (let i = 6; i >= 0; i--) {
+          const agePoint = baseAge - i;
+          const wVar = Math.sin(i) * 0.8;
+          const hVar = i === 6 ? -1 : 0;
+          seed.push({
+            ageLabel: `Age ${agePoint}`,
+            weight: Math.round((weight + wVar) * 10) / 10,
+            height: height + hVar
+          });
+        }
+        localStorage.setItem("nect_telemetry_history", JSON.stringify(seed));
+        parsedHistory = seed;
+      }
+      setTelemetryHistory(parsedHistory);
+      setIsLoaded(true);
     }, 0);
 
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (weight === undefined || height === undefined || age === undefined) return;
+    
+    const storedHistory = localStorage.getItem("nect_telemetry_history");
+    let history = [];
+    if (storedHistory) {
+      try {
+        history = JSON.parse(storedHistory);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    if (history.length === 0) return; // wait for hydration seed
+
+    const currentAgeLabel = `Age ${age}`;
+    const existingIndex = history.findIndex((entry: any) => entry.ageLabel === currentAgeLabel);
+    
+    if (existingIndex >= 0) {
+      history[existingIndex].weight = weight;
+      history[existingIndex].height = height;
+    } else {
+      history.push({ ageLabel: currentAgeLabel, weight, height });
+    }
+    
+    if (history.length > 7) {
+      history = history.slice(history.length - 7);
+    }
+    
+    localStorage.setItem("nect_telemetry_history", JSON.stringify(history));
+    setTelemetryHistory(history);
+  }, [weight, height, age, isLoaded]);
+
+  // --- NEW CHARTS DATA ENGINE ---
+  const workoutsByDayData = useMemo(() => {
+    const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return daysOfWeek.map(dayName => {
+      const dayItems = workouts.filter(w => w.day === dayName);
+      const completedCount = dayItems.filter(item => {
+        if (item.completed !== undefined) return item.completed;
+        return item.checkedSets ? item.checkedSets.every(Boolean) : false;
+      }).length;
+      return {
+        name: dayName.substring(0, 3),
+        completed: completedCount,
+        total: dayItems.length
+      };
+    });
+  }, [workouts]);
+
+  const workoutsByBodyPartData = useMemo(() => {
+    const bodyPartsList = ["Chest", "Legs", "Back", "Core", "Arms", "Shoulders"];
+    return bodyPartsList.map(part => {
+      const partItems = workouts.filter(w => {
+        const bp = w.bodyPart.toLowerCase();
+        if (part === "Core") return bp.includes("abs") || bp.includes("core");
+        return bp.includes(part.toLowerCase());
+      });
+      const completedCount = partItems.filter(item => {
+        if (item.completed !== undefined) return item.completed;
+        return item.checkedSets ? item.checkedSets.every(Boolean) : false;
+      }).length;
+      return {
+        name: part,
+        completed: completedCount,
+        total: partItems.length
+      };
+    });
+  }, [workouts]);
+
+  const sleepChartData = useMemo(() => {
+    const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return daysOfWeek.map((d) => {
+      const log = sleepLogs.find((l) => l.day === d);
+      if (!log) {
+        return { name: d.substring(0, 3), hours: 0 };
+      }
+      const sleepTotal = log.sleepHour * 60 + log.sleepMin;
+      const wakeTotal = log.wakeHour * 60 + log.wakeMin;
+      let diffMinutes = 0;
+      if (wakeTotal >= sleepTotal) {
+        diffMinutes = wakeTotal - sleepTotal;
+      } else {
+        diffMinutes = (24 * 60 - sleepTotal) + wakeTotal;
+      }
+      const hours = Math.round((diffMinutes / 60) * 10) / 10;
+      return { name: d.substring(0, 3), hours };
+    });
+  }, [sleepLogs]);
+
+  const pieData = useMemo(() => {
+    const expenseMap: Record<string, number> = {};
+    const txList = transactions.length > 0 ? transactions : [];
+    
+    txList.filter(t => t.type === "expense").forEach(t => {
+      expenseMap[t.category] = (expenseMap[t.category] || 0) + t.amount;
+    });
+
+    const colors = ["#f43f5e", "#3b82f6", "#eab308", "#10b981", "#a855f7", "#f97316", "#06b6d4"];
+    return Object.entries(expenseMap).map(([name, value], index) => ({
+      name,
+      value,
+      color: colors[index % colors.length]
+    })).sort((a, b) => b.value - a.value);
+  }, [transactions]);
 
   // --- MUSCLE GROUP WEEKLY LOG CALCULATION ---
   const muscleGroupsProgress = useMemo(() => {
@@ -524,12 +718,12 @@ export function DashboardModule({
                 <div
                   className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isOverloaded
                       ? "border-red-500 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse"
-                      : "border-amber-500/20 bg-slate-900/40 hover:border-amber-500/45 hover:shadow-[0_0_20px_rgba(245,158,11,0.06)]"
+                      : "border-yellow-500/20 bg-slate-900/40 hover:border-yellow-500/45 hover:shadow-[0_0_20px_rgba(234,179,8,0.06)]"
                     }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isOverloaded ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-amber-500/10 border-amber-500/25 text-amber-400"}`}>
+                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isOverloaded ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"}`}>
                         <Zap className="h-5 w-5" />
                       </div>
                       <div>
@@ -562,8 +756,8 @@ export function DashboardModule({
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${progressPercent}%`,
-                          backgroundColor: isOverloaded ? "#ef4444" : "#f59e0b",
-                          boxShadow: isOverloaded ? "0 0 10px #ef4444" : "0 0 8px #f59e0b"
+                          backgroundColor: isOverloaded ? "#ef4444" : "#eab308",
+                          boxShadow: isOverloaded ? "0 0 10px #ef4444" : "0 0 8px #eab308"
                         }}
                       />
                     </div>
@@ -578,35 +772,14 @@ export function DashboardModule({
               const progressPercent = Math.min(100, Math.round((foodTelemetry.protein / proteinTarget) * 100));
               return (
                 <div
-                  className="rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px]"
-                  style={{
-                    borderColor: isGoalMet ? "var(--rank-accent)" : "rgba(var(--rank-accent-rgb), 0.2)",
-                    backgroundColor: isGoalMet ? "rgba(var(--rank-accent-rgb), 0.15)" : "rgba(30, 41, 59, 0.4)",
-                    boxShadow: isGoalMet ? "var(--rank-accent-glow-strong)" : "none",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isGoalMet) {
-                      e.currentTarget.style.borderColor = "rgba(var(--rank-accent-rgb), 0.45)";
-                      e.currentTarget.style.boxShadow = "var(--rank-accent-glow-subtle)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isGoalMet) {
-                      e.currentTarget.style.borderColor = "rgba(var(--rank-accent-rgb), 0.2)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }
-                  }}
+                  className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
+                      ? "border-red-500 bg-red-950/15 shadow-[0_0_20px_rgba(239,68,68,0.22)]"
+                      : "border-red-500/20 bg-slate-900/40 hover:border-red-500/45 hover:shadow-[0_0_20px_rgba(239,68,68,0.06)]"
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div
-                        className="p-2.5 rounded-xl border transition-colors duration-300"
-                        style={{
-                          backgroundColor: isGoalMet ? "rgba(var(--rank-accent-rgb), 0.1)" : "rgba(var(--rank-accent-rgb), 0.05)",
-                          borderColor: isGoalMet ? "rgba(var(--rank-accent-rgb), 0.35)" : "rgba(var(--rank-accent-rgb), 0.15)",
-                          color: "var(--rank-accent)",
-                        }}
-                      >
+                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-red-500/10 border-red-500/35 text-red-400" : "bg-red-500/5 border-red-500/15 text-red-400"}`}>
                         <Beef className="h-5 w-5" />
                       </div>
                       <div>
@@ -615,15 +788,7 @@ export function DashboardModule({
                       </div>
                     </div>
                     {isGoalMet ? (
-                      <span
-                        className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded"
-                        style={{
-                          backgroundColor: "rgba(var(--rank-accent-rgb), 0.2)",
-                          border: "1px solid var(--rank-accent)",
-                          color: "var(--rank-accent)",
-                          boxShadow: "var(--rank-accent-glow-subtle)",
-                        }}
-                      >
+                      <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/80 border border-red-500 text-red-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(239,68,68,0.25)]">
                         ✓ SECURED
                       </span>
                     ) : (
@@ -649,8 +814,8 @@ export function DashboardModule({
                         className="h-full rounded-full transition-all duration-500"
                         style={{
                           width: `${progressPercent}%`,
-                          backgroundColor: "var(--rank-accent)",
-                          boxShadow: isGoalMet ? "var(--rank-accent-glow-strong)" : "var(--rank-accent-glow-subtle)"
+                          backgroundColor: "#ef4444",
+                          boxShadow: isGoalMet ? "0 0 12px #ef4444" : "0 0 6px #ef4444"
                         }}
                       />
                     </div>
@@ -721,20 +886,19 @@ export function DashboardModule({
 
       {/* 2. MAIN GRID VIEW */}
       <div className="grid gap-6 grid-cols-12">
-        {/* Left Column: Resource Flow Engine (col-span-12 lg:col-span-6) */}
+        {/* A. Resource Flow - Full Width */}
         {visibleModules.Money && (
-          <div className={`col-span-12 ${visibleModules.Learning ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
-            {/* A. Resource Flow Engine (Money Module) */}
+          <div className="col-span-12">
             <div 
               className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
               style={{ 
-                height: showSynapticGateway && visibleModules.Learning ? "420px" : "160px",
+                height: "320px",
                 borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
               }}
             >
               <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
                 <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4 text-emerald-400" /> Resource Flow Engine
+                  <DollarSign className="h-4 w-4 text-emerald-400" /> Resource Flow
                 </h3>
                 <div className="flex items-center gap-3 text-[10px] font-black uppercase text-slate-500">
                   <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
@@ -771,9 +935,74 @@ export function DashboardModule({
           </div>
         )}
 
-        {/* Right Column: Cognitive Synaptic Gateway & Skill Tree Tracker (col-span-12 lg:col-span-6) */}
+        {/* B. Workout Chart - Left Side */}
+        {visibleModules.Workout && (
+          <div className={`col-span-12 ${visibleModules.Learning ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
+            <div 
+              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between transition-all duration-300 min-h-[300px]"
+              style={{ 
+                borderColor: `color-mix(in srgb, var(--rank-accent) 12%, transparent)`, 
+                boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 2%, transparent)` 
+              }}
+            >
+              <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                    <Dumbbell className="h-4 w-4 text-emerald-450" /> Workout Chart
+                  </h3>
+                  <div className="flex rounded-lg bg-slate-955/65 p-0.5 border border-slate-850">
+                    <button
+                      type="button"
+                      onClick={() => setWorkoutChartTab("day")}
+                      className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${
+                        workoutChartTab === "day" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      By Day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWorkoutChartTab("bodypart")}
+                      className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${
+                        workoutChartTab === "bodypart" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      By Body Part
+                    </button>
+                  </div>
+                </div>
+
+                <span className="text-[8px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                  Refreshes Sunday
+                </span>
+              </div>
+
+              {/* Render Bar Chart */}
+              <div className="w-full h-44 mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={workoutChartTab === "day" ? workoutsByDayData : workoutsByBodyPartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                    <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                      itemStyle={{ color: "#f8fafc" }}
+                    />
+                    <Bar dataKey="completed" fill="var(--rank-accent)" radius={[4, 4, 0, 0]} name="Workouts Completed" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="text-[9px] text-slate-500 font-semibold text-center border-t border-slate-850/60 pt-2 shrink-0">
+                Weekly Average Compliance: <span className="font-bold text-slate-355">{averageWeeklyCompliance}%</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* C. Study Chart - Right Side */}
         {visibleModules.Learning && (
-          <div className={`col-span-12 ${visibleModules.Money ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
+          <div className={`col-span-12 ${visibleModules.Workout ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
             {showSynapticGateway && (
               <div 
                 className="p-6 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col items-center justify-between h-[236px] transition-all duration-300"
@@ -788,12 +1017,9 @@ export function DashboardModule({
                   </span>
                 </div>
 
-                {/* Minimal circular data track */}
                 <div className="relative flex items-center justify-center my-2">
                   <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 100 100">
-                    {/* Background Circle */}
                     <circle cx="50" cy="50" r="40" fill="transparent" stroke="#0f172a" strokeWidth="8" />
-                    {/* Progress Circle */}
                     <circle 
                       cx="50" 
                       cy="50" 
@@ -815,7 +1041,6 @@ export function DashboardModule({
                   </div>
                 </div>
 
-                {/* Underneath short text readout */}
                 <div className="text-center w-full">
                   <p className="text-[10px] text-slate-550 font-bold uppercase tracking-wider">
                     CURRENT SYNAPTIC WINDOW
@@ -827,215 +1052,324 @@ export function DashboardModule({
               </div>
             )}
 
-            {/* B. Skill Tree Tracker (Learning Module) */}
             <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex items-center justify-between"
-              style={{ height: "160px" }}
+              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+              style={{ height: showSynapticGateway ? "160px" : "236px" }}
             >
-              <div className="w-1/2 flex flex-col justify-between h-full py-0.5">
-                <div>
-                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                    <BookOpen className="h-4 w-4 text-indigo-400" /> Skill Matrix Hub
-                  </h3>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Timer className="h-5 w-5 text-indigo-400 shrink-0" />
-                    <span className="text-2xl font-black text-slate-100 tracking-wide leading-none">
-                      {learningTelemetry.hours} <span className="text-xs text-slate-500 font-bold">HRS</span>
+              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2">
+                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                  <BookOpen className="h-4 w-4 text-indigo-400" /> Study Chart
+                </h3>
+                <span className="text-[8px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(99,102,241,0.25)]">
+                  Refreshes Daily
+                </span>
+              </div>
+
+              <div className="flex-1 flex items-center justify-around gap-4 mt-2">
+                {/* Left: Total Study Time */}
+                <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
+                  <Timer className="h-5 w-5 text-indigo-400 mb-1" />
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Total Study Time</span>
+                  <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
+                    {learningTelemetry.hours} <span className="text-[10px] text-slate-400">HRS</span>
+                  </span>
+                </div>
+
+                {/* Right: Total Revisions Done */}
+                <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
+                  <CheckSquare className="h-5 w-5 text-emerald-450 mb-1" />
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Revisions Done</span>
+                  <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
+                    {studyProgressDetails.completedRevisions} <span className="text-[10px] text-slate-400">/ {studyProgressDetails.totalRevisions}</span>
+                  </span>
+                  <span className="text-[8px] font-black text-emerald-450 mt-1 uppercase tracking-widest bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/40">
+                    {studyProgressDetails.revisionsPct}% Done
+                  </span>
+                </div>
+              </div>
+
+              {!showSynapticGateway && learningTelemetry.closestExam && (
+                <div className="flex items-center gap-2 text-red-405 bg-red-955 border border-red-900/60 p-2 rounded-xl animate-pulse mt-2">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <div className="overflow-hidden leading-tight flex-1">
+                    <span className="text-[8px] font-black tracking-wider uppercase block text-red-100">CRITICAL WAR</span>
+                    <span className="text-[8px] font-bold text-slate-355 truncate block">
+                      {learningTelemetry.closestExam.title}
                     </span>
                   </div>
                 </div>
+              )}
+            </div>
+          </div>
+        )}
 
-                {/* Exam Alert Notification */}
-                {learningTelemetry.closestExam ? (
-                  <div className="flex items-center gap-2 text-red-405 bg-red-950/40 border border-red-900/60 p-2 rounded-xl animate-pulse mt-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
-                    <div className="overflow-hidden leading-tight">
-                      <span className="text-[8px] font-black tracking-wider uppercase block text-red-100">CRITICAL WAR</span>
-                      <span className="text-[8px] font-bold text-slate-350 truncate block">
-                        {learningTelemetry.closestExam.title}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-slate-555 bg-slate-955 border border-slate-850 p-1.5 rounded-xl mt-1">
-                    <Calendar className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-[8px] font-bold uppercase tracking-wider">No active exam</span>
-                  </div>
-                )}
+        {/* D. Task Board - Full Width at bottom */}
+        {visibleModules.Tasks && (
+          <div className="col-span-12">
+            <div
+              className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300"
+              style={{ borderColor: `${accentColor}20` }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-850 pb-3 mb-4">
+                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                  <ListTodo className="h-4 w-4 text-amber-400" /> Task Board
+                </h3>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl">
+                  {taskTelemetry.completed} / {taskTelemetry.total} Completed
+                </span>
               </div>
 
-              {/* Radial Loading Gauge */}
-              <div className="w-28 h-28 relative flex items-center justify-center shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart
-                    cx="50%"
-                    cy="50%"
-                    innerRadius="75%"
-                    outerRadius="100%"
-                    barSize={8}
-                    data={studyProgressDetails.chartData}
-                    startAngle={90}
-                    endAngle={-270}
-                  >
-                    <RadialBar
-                      background={{ fill: "#33415510" }}
-                      dataKey="value"
-                      cornerRadius={5}
-                    />
-                  </RadialBarChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center leading-none mt-1">
-                  <span className="text-[16px] font-black text-slate-100 font-mono">
-                    {studyProgressDetails.revisionsPct}%
-                  </span>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                    {studyProgressDetails.completedRevisions} / {studyProgressDetails.totalRevisions}
-                  </span>
-                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
-                    Subjects
-                  </span>
+              {tasks.length === 0 ? (
+                <div className="text-center py-6 text-slate-500 text-xs italic">
+                  No bounties active. Add tasks inside the Tasks module to list them here.
                 </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                  {tasks.map((task) => (
+                    <div
+                      key={task.id}
+                      onClick={() => toggleDashboardTask(task.id)}
+                      className={`flex items-center gap-3 rounded-xl border p-3.5 bg-slate-955/45 cursor-pointer select-none active:scale-[0.98] transition-all hover:border-slate-700 ${task.completed ? "opacity-60 border-slate-900" : "border-slate-850"
+                        }`}
+                    >
+                      <button
+                        type="button"
+                        className="text-slate-400 hover:text-white transition-colors"
+                      >
+                        {task.completed ? (
+                          <CheckSquare className="h-5 w-5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Square className="h-5 w-5 text-slate-600 shrink-0" />
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold truncate ${task.completed ? "line-through text-slate-500" : "text-slate-200"}`}>
+                          {task.title}
+                        </p>
+                        <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
+                          ? "bg-rose-950/50 border-rose-900 text-rose-350"
+                          : task.priority === "medium"
+                            ? "bg-amber-950/50 border-amber-900 text-amber-350"
+                            : "bg-slate-900 border-slate-800 text-slate-400"
+                          }`}>
+                          {task.priority}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* E. Sleep Cycle Chart - Full Width */}
+        {visibleModules.Workout && (
+          <div className="col-span-12">
+            <div 
+              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+              style={{ 
+                height: "320px",
+                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+              }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                  <Moon className="h-4 w-4 text-indigo-400" /> Sleep Cycle Tracker
+                </h3>
+                <span className="text-[9px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.25)]">
+                  Weekly Duration
+                </span>
+              </div>
+
+              <div className="w-full flex-1 mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={sleepChartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="sleepGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                      itemStyle={{ color: "#f8fafc" }}
+                    />
+                    <Area type="monotone" dataKey="hours" stroke="#8b5cf6" fillOpacity={1} fill="url(#sleepGlow)" strokeWidth={2} name="Hours Slept" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
         )}
 
-        {/* Full-width Row: Kinetic Overdrive Matrix (col-span-12) */}
-        {visibleModules.Workout && (
-          <div className="col-span-12">
-            {/* Kinetic Overdrive Matrix (compact full-width style) */}
+        {/* F. Category Spending breakdown (Pie Chart) - Side-by-Side */}
+        {visibleModules.Money && (
+          <div className="col-span-12 lg:col-span-6">
             <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between transition-all duration-300"
+              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
               style={{ 
-                height: "145px",
-                borderColor: `color-mix(in srgb, var(--rank-accent) 12%, transparent)`, 
-                boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 2%, transparent)` 
+                minHeight: "360px",
+                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
               }}
             >
-              <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
                 <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <Dumbbell className="h-4 w-4 text-emerald-450" /> Kinetic Overdrive Matrix
+                  <DollarSign className="h-4 w-4 text-emerald-400" /> Category Spending breakdown
                 </h3>
-                
-                {/* Performance Title Evaluator */}
-                <span 
-                  className="text-[9px] font-black tracking-widest uppercase border px-2 py-0.5 rounded transition-all duration-300"
-                  style={{ 
-                    color: overallPerformance.color, 
-                    borderColor: `${overallPerformance.color}30`, 
-                    backgroundColor: `${overallPerformance.color}10`,
-                    boxShadow: `0 0 8px ${overallPerformance.color}10`
-                  }}
-                >
-                  {overallPerformance.label}
+                <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                  Monthly Expenses
                 </span>
               </div>
 
-              {/* Anatomical & Brain Performance Tag Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 my-2">
-                {[
-                  { key: "brain", label: "Brain", isLucide: true, icon: <Brain className="h-4 w-4" />, score: Math.min(100, Math.round((learningTelemetry.hours / learningTelemetry.target) * 100)) },
-                  { key: "chest", label: "Chest", icon: "chest.png", score: muscleGroupsProgress.chest ?? 0 },
-                  { key: "shoulders", label: "Shoulders", icon: "shoulders.png", score: muscleGroupsProgress.shoulders ?? 0 },
-                  { key: "abs", label: "Core", icon: "abs.png", score: muscleGroupsProgress.abs ?? 0 },
-                  { key: "back", label: "Back", icon: "back.png", score: muscleGroupsProgress.back ?? 0 },
-                  { key: "arms", label: "Arms", icon: "arms.png", score: muscleGroupsProgress.arms ?? 0 },
-                  { key: "legs", label: "Legs", icon: "legs.png", score: muscleGroupsProgress.legs ?? 0 }
-                ].map((item) => {
-                  const score = item.score;
-                  const status = getWorkoutStatus(score);
-                  return (
-                    <div 
-                      key={item.key} 
-                      className="flex items-center justify-between p-2 rounded-xl border bg-slate-955/45 transition-all duration-300 hover:border-slate-800"
-                      style={{ borderColor: `color-mix(in srgb, ${status.color} 15%, transparent)` }}
-                    >
-                      <div className="flex items-center gap-1.5 overflow-hidden">
-                        {item.isLucide ? (
-                          <div style={{ color: status.color }} className="shrink-0">
-                            {item.icon}
-                          </div>
-                        ) : (
-                          <img 
-                            src={`/assets/icons/${item.icon}`} 
-                            alt={item.label} 
-                            className="h-4 w-4 object-contain shrink-0" 
-                            style={{ mixBlendMode: "screen" }}
-                          />
-                        )}
-                        <span className="text-[10px] font-bold text-slate-355 truncate tracking-wide">{item.label}</span>
-                      </div>
-                      <span className="font-mono text-[10px] font-black shrink-0 ml-1" style={{ color: status.color }}>{score}%</span>
+              {pieData.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center py-12 text-slate-500 text-xs italic">
+                  No expense transactions logged for this month.
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-around gap-4 mt-4">
+                  {/* Pie chart container */}
+                  <div className="w-48 h-48 relative shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={65}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: any) => [`₹${value}`, "Amount Spent"]}
+                          contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-none">
+                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Top Spend</span>
+                      <span className="text-[10px] font-bold text-slate-200 mt-0.5 truncate max-w-[100px]" title={pieData[0]?.name}>
+                        {pieData[0]?.name || "N/A"}
+                      </span>
+                      <span className="text-xs font-black text-rose-455 mt-0.5">
+                        ₹{pieData[0]?.value || 0}
+                      </span>
                     </div>
-                  );
-                })}
+                  </div>
+
+                  {/* Legend list */}
+                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md max-h-[140px] overflow-y-auto pr-1">
+                    {pieData.map((item, index) => {
+                      const totalSpent = pieData.reduce((sum, d) => sum + d.value, 0);
+                      const percent = totalSpent > 0 ? Math.round((item.value / totalSpent) * 100) : 0;
+                      return (
+                        <div 
+                          key={item.name}
+                          className="flex items-center justify-between p-2 rounded-xl border border-slate-850 bg-slate-955/30"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="text-[10px] font-bold text-slate-355 truncate">{item.name}</span>
+                          </div>
+                          <div className="text-right ml-2 shrink-0">
+                            <p className="text-[10px] font-black text-slate-100">₹{item.value}</p>
+                            <p className="text-[8px] font-bold text-slate-500">{percent}%</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* G. Weight & Height Tracker (Dual-Axis Line Chart) - Side-by-Side */}
+        {visibleModules.Workout && (
+          <div className="col-span-12 lg:col-span-6">
+            <div 
+              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+              style={{ 
+                minHeight: "360px",
+                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+              }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                  <TrendingUp className="h-4 w-4 text-rose-455" /> Weight & Height Tracker
+                </h3>
+                <span className="text-[9px] font-black tracking-widest uppercase bg-rose-950/80 border border-rose-800 text-rose-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(244,63,94,0.25)]">
+                  Dual-Axis Line Chart
+                </span>
               </div>
-              
-              <div className="text-[9px] text-slate-500 font-semibold text-center border-t border-slate-850/60 pt-2 shrink-0">
-                Weekly Average Compliance: <span className="font-bold text-slate-355">{averageWeeklyCompliance}%</span>
+
+              <div className="w-full h-48 mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={telemetryHistory} margin={{ top: 15, right: -5, left: -25, bottom: 0 }}>
+                    <XAxis dataKey="ageLabel" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                    <YAxis 
+                      yAxisId="left" 
+                      stroke="#f43f5e" 
+                      fontSize={9} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      domain={['dataMin - 1', 'dataMax + 1']}
+                    />
+                    <YAxis 
+                      yAxisId="right" 
+                      orientation="right" 
+                      stroke="#3b82f6" 
+                      fontSize={9} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      domain={['dataMin - 1', 'dataMax + 1']}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                      itemStyle={{ color: "#f8fafc" }}
+                    />
+                    <Line 
+                      yAxisId="left" 
+                      type="monotone" 
+                      dataKey="weight" 
+                      stroke="#f43f5e" 
+                      strokeWidth={2} 
+                      dot={{ r: 3 }} 
+                      activeDot={{ r: 5 }} 
+                      name="Weight (kg)" 
+                    />
+                    <Line 
+                      yAxisId="right" 
+                      type="monotone" 
+                      dataKey="height" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2} 
+                      dot={{ r: 3 }} 
+                      activeDot={{ r: 5 }} 
+                      name="Height (cm)" 
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase mt-2 pt-2 border-t border-slate-850/60">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Weight: {weight} kg</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-500" /> Height: {height} cm</span>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* 3. BOUNTY BOARD NODES (Tasks module Integration) */}
-      {visibleModules.Tasks && (
-        <div
-          className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300"
-          style={{ borderColor: `${accentColor}20` }}
-        >
-          <div className="flex items-center justify-between border-b border-slate-850 pb-3 mb-4">
-            <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-              <ListTodo className="h-4 w-4 text-amber-400" /> Bounty Board Nodes
-            </h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl">
-              {taskTelemetry.completed} / {taskTelemetry.total} Completed
-            </span>
-          </div>
-
-          {tasks.length === 0 ? (
-            <div className="text-center py-6 text-slate-500 text-xs italic">
-              No bounties active. Add tasks inside the Tasks module to list them here.
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => toggleDashboardTask(task.id)}
-                  className={`flex items-center gap-3 rounded-xl border p-3.5 bg-slate-955/45 cursor-pointer select-none active:scale-[0.98] transition-all hover:border-slate-700 ${task.completed ? "opacity-60 border-slate-900" : "border-slate-850"
-                    }`}
-                >
-                  <button
-                    type="button"
-                    className="text-slate-400 hover:text-white transition-colors"
-                  >
-                    {task.completed ? (
-                      <CheckSquare className="h-5 w-5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Square className="h-5 w-5 text-slate-600 shrink-0" />
-                    )}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold truncate ${task.completed ? "line-through text-slate-500" : "text-slate-200"}`}>
-                      {task.title}
-                    </p>
-                    <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
-                      ? "bg-rose-950/50 border-rose-900 text-rose-350"
-                      : task.priority === "medium"
-                        ? "bg-amber-950/50 border-amber-900 text-amber-350"
-                        : "bg-slate-900 border-slate-800 text-slate-400"
-                      }`}>
-                      {task.priority}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </section>
   );
 }

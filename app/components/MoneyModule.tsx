@@ -19,7 +19,10 @@ import {
   FileText,
   ArrowUp,
   ArrowDown,
-  Sliders
+  Sliders,
+  CreditCard,
+  Edit2,
+  Eye
 } from "lucide-react";
 
 type TransactionType = "income" | "expense";
@@ -164,6 +167,7 @@ export function MoneyModule() {
   const [newCatName, setNewCatName] = useState<string>("");
   const [newCatColor, setNewCatColor] = useState<string>("#ef4444");
   const [newCatLimit, setNewCatLimit] = useState<string>("");
+  const [editingCategoryOriginalName, setEditingCategoryOriginalName] = useState<string | null>(null);
 
   // Recurring UI States
   const [showRecurringManager, setShowRecurringManager] = useState<boolean>(false);
@@ -175,6 +179,7 @@ export function MoneyModule() {
 
   // Notifications
   const [notification, setNotification] = useState<string>("");
+  const [selectedTxForBill, setSelectedTxForBill] = useState<Transaction | null>(null);
 
   // --- HELPER FUNCTIONS ---
   const showTempNotification = (msg: string) => {
@@ -305,6 +310,17 @@ export function MoneyModule() {
     return initialBalance + totalEarnings - totalExpenses;
   }, [initialBalance, totalEarnings, totalExpenses]);
 
+  const todaysPayment = useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    return transactions
+      .filter((t) => t.date === todayStr && t.type === "expense")
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [transactions]);
+
+  const totalProfitLoss = useMemo(() => {
+    return totalEarnings - totalExpenses;
+  }, [totalEarnings, totalExpenses]);
+
   // Current year-month key for logging recurring transactions, e.g. "2026-06"
   const currentMonthKey = useMemo(() => {
     const today = new Date();
@@ -426,35 +442,122 @@ export function MoneyModule() {
     }
   };
 
-  const handleCreateCategory = (e: FormEvent) => {
+  const handleSaveCategory = (e: FormEvent) => {
     e.preventDefault();
     const name = newCatName.trim();
     if (!name) return;
 
-    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-      alert("A category with this name already exists.");
-      return;
-    }
-
     const limit = newCatLimit.trim() ? parseFloat(newCatLimit) : null;
 
-    const newCategory: Category = {
-      name,
-      color: newCatColor,
-      monthlyLimit: limit && !isNaN(limit) ? limit : null,
-    };
+    if (editingCategoryOriginalName) {
+      // Editing Mode
+      const isDuplicate = categories.some(
+        (c) =>
+          c.name.toLowerCase() === name.toLowerCase() &&
+          c.name.toLowerCase() !== editingCategoryOriginalName.toLowerCase()
+      );
+      if (isDuplicate) {
+        alert("A category with this name already exists.");
+        return;
+      }
 
-    const updatedCats = [...categories, newCategory];
-    setCategories(updatedCats);
-    setNewCatName("");
-    setNewCatLimit("");
-    setShowCategoryCreator(false);
+      // Update categories array
+      const updatedCats = categories.map((c) =>
+        c.name === editingCategoryOriginalName
+          ? { ...c, name, color: newCatColor, monthlyLimit: limit && !isNaN(limit) ? limit : null }
+          : c
+      );
 
-    setTxCategory(name);
-    setNewRecCategory(name);
+      // Cascade update transactions
+      const updatedTxs = transactions.map((t) =>
+        t.category === editingCategoryOriginalName ? { ...t, category: name } : t
+      );
 
-    saveState(isInitialized, initialBalance, transactions, updatedCats, recurringRules, processedRecurring);
-    showTempNotification(`Category "${name}" created.`);
+      // Cascade update recurring rules
+      const updatedRecs = recurringRules.map((r) =>
+        r.category === editingCategoryOriginalName ? { ...r, category: name } : r
+      );
+
+      setCategories(updatedCats);
+      setTransactions(updatedTxs);
+      setRecurringRules(updatedRecs);
+
+      setNewCatName("");
+      setNewCatLimit("");
+      setEditingCategoryOriginalName(null);
+
+      // Update selectors if they matched
+      if (txCategory === editingCategoryOriginalName) setTxCategory(name);
+      if (newRecCategory === editingCategoryOriginalName) setNewRecCategory(name);
+
+      saveState(isInitialized, initialBalance, updatedTxs, updatedCats, updatedRecs, processedRecurring);
+      showTempNotification(`Category "${name}" updated.`);
+    } else {
+      // Creating Mode
+      if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+        alert("A category with this name already exists.");
+        return;
+      }
+
+      const newCategory: Category = {
+        name,
+        color: newCatColor,
+        monthlyLimit: limit && !isNaN(limit) ? limit : null,
+      };
+
+      const updatedCats = [...categories, newCategory];
+      setCategories(updatedCats);
+      setNewCatName("");
+      setNewCatLimit("");
+
+      setTxCategory(name);
+      setNewRecCategory(name);
+
+      saveState(isInitialized, initialBalance, transactions, updatedCats, recurringRules, processedRecurring);
+      showTempNotification(`Category "${name}" created.`);
+    }
+  };
+
+  const handleDeleteCategory = (catName: string) => {
+    if (categories.length <= 1) {
+      alert("You must have at least one category tag.");
+      return;
+    }
+    if (confirm(`Are you sure you want to delete category "${catName}"? Matching transactions will be reassigned to your first category.`)) {
+      const fallbackCat = categories.find((c) => c.name !== catName && c.name.toLowerCase() === "other")
+        || categories.find((c) => c.name !== catName);
+
+      const fallbackName = fallbackCat ? fallbackCat.name : "Other";
+
+      const updatedCats = categories.filter((c) => c.name !== catName);
+
+      // Cascade update transactions
+      const updatedTxs = transactions.map((t) =>
+        t.category === catName ? { ...t, category: fallbackName } : t
+      );
+
+      // Cascade update recurring rules
+      const updatedRecs = recurringRules.map((r) =>
+        r.category === catName ? { ...r, category: fallbackName } : r
+      );
+
+      setCategories(updatedCats);
+      setTransactions(updatedTxs);
+      setRecurringRules(updatedRecs);
+
+      // Update active dropdown selections if they matched the deleted category
+      if (txCategory === catName) setTxCategory(fallbackName);
+      if (newRecCategory === catName) setNewRecCategory(fallbackName);
+
+      if (editingCategoryOriginalName === catName) {
+        setEditingCategoryOriginalName(null);
+        setNewCatName("");
+        setNewCatLimit("");
+      }
+
+      saveState(isInitialized, initialBalance, updatedTxs, updatedCats, updatedRecs, processedRecurring);
+      showTempNotification(`Category "${catName}" deleted.`);
+    }
   };
 
   // Interceptor Actions
@@ -546,21 +649,21 @@ export function MoneyModule() {
     localStorage.setItem("nect_money_currency", newCurrency);
   };
 
-  const handleResetStorage = () => {
-    if (confirm("Are you sure you want to reset all Money Module data? This will re-trigger the onboarding setup.")) {
-      localStorage.removeItem("nect_money_initialized");
-      localStorage.removeItem("nect_money_initial_balance");
-      localStorage.removeItem("nect_money_transactions");
-      localStorage.removeItem("nect_money_categories");
-      localStorage.removeItem("nect_money_recurring_rules");
-      localStorage.removeItem("nect_money_processed_recurring");
+  const handleDeleteLastMonthData = () => {
+    if (confirm("Are you sure you want to delete all transactions from previous months?")) {
+      const now = new Date();
+      const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfCurrentMonthTime = startOfCurrentMonth.getTime();
 
-      setIsInitialized(false);
-      setInitialBalance(0);
-      setTransactions([]);
-      setCategories(defaultCategories);
-      setRecurringRules(defaultRecurringRules);
-      setProcessedRecurring([]);
+      const updatedTxs = transactions.filter((t) => {
+        const [y, m, d] = t.date.split("-").map(Number);
+        const txDate = new Date(y, m - 1, d);
+        return txDate.getTime() >= startOfCurrentMonthTime;
+      });
+
+      setTransactions(updatedTxs);
+      saveState(isInitialized, initialBalance, updatedTxs, categories, recurringRules, processedRecurring);
+      showTempNotification("Deleted transactions from previous months.");
     }
   };
 
@@ -596,22 +699,6 @@ export function MoneyModule() {
                   onChange={(e) => setOnboardingInput(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-4 px-5 text-lg font-black text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-605 focus:border-[var(--rank-accent)] focus:ring-2 focus:ring-[var(--rank-accent)]/20"
                 />
-                <div className="absolute right-4 text-xs font-bold text-slate-505 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleCurrencyChange("USD")}
-                    className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "USD" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
-                  >
-                    USD ($)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCurrencyChange("INR")}
-                    className={`px-1.5 py-0.5 rounded cursor-pointer ${currency === "INR" ? "text-[var(--rank-accent)] bg-slate-900 border border-[var(--rank-accent)]/20" : ""}`}
-                  >
-                    INR (₹)
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -630,92 +717,70 @@ export function MoneyModule() {
   // --- PHASE 2: ACTIVE WORKSPACE ---
   return (
     <section className="space-y-6 animate-fade-in-up">
-      {/* Top Banner Row */}
-      <div className="relative grid gap-5 lg:grid-cols-[1fr_360px] items-center">
-
-        {/* Top-Left: Module Title & Center Net Liquidity Block */}
-        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm w-full">
+      {/* Top Panel (Main Panel) */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-6 backdrop-blur-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--rank-accent)]/30 bg-slate-950/70 shadow-[var(--rank-accent-glow-subtle)]">
-              <Image
-                src="/assets/icons/money.png"
-                alt="Money module icon"
-                width={44}
-                height={44}
-                className="h-11 w-11 object-contain"
-              />
-            </div>
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-                Ledger Workspace
-              </p>
-              <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl tracking-wider">
-                MONEY
+            <div className="flex flex-col items-center md:items-start text-center md:text-left shrink-0">
+              <h1 className="text-3xl font-black text-white uppercase tracking-wider">
+                Finance Desk
               </h1>
+              <span className="text-[10px] font-black tracking-[0.2em] text-[var(--rank-accent)] mt-1.5 uppercase">
+                Manage your wealth
+              </span>
             </div>
           </div>
-
-          {/* Top-Center: Net Liquidity Tag */}
-          <div className="flex-1 flex justify-center md:max-w-md">
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-6 py-4 text-center min-w-[280px] shadow-[inset_0_0_12px_rgba(255,255,255,0.03)]">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                Net Liquidity Pool
-              </p>
-              <p className="mt-1.5 text-2xl font-black text-white truncate">
-                Total Money Left: <span className="text-[var(--rank-accent)]">{currencySymbol}{netLiquidity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Currency Toggle */}
+          {/* Notifications display */}
           <div className="flex items-center gap-2 self-end md:self-center">
             {notification && (
               <span className="mr-2 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 animate-pulse">
                 {notification}
               </span>
             )}
-            <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950/75 p-0.5 text-xs font-bold text-slate-400">
-              <button
-                type="button"
-                onClick={() => handleCurrencyChange("USD")}
-                className={`rounded-lg px-2.5 py-1.5 transition-all cursor-pointer ${currency === "USD" ? "bg-slate-800 text-white font-black" : "hover:text-slate-200"}`}
-              >
-                USD ($)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCurrencyChange("INR")}
-                className={`rounded-lg px-2.5 py-1.5 transition-all cursor-pointer ${currency === "INR" ? "bg-slate-800 text-white font-black" : "hover:text-slate-200"}`}
-              >
-                INR (₹)
-              </button>
+          </div>
+        </div>
+
+        {/* Dynamic Telemetry / Status Row */}
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 border-t border-slate-800/80">
+          {/* Today's Payment */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
+              <CreditCard className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Today's Payment</p>
+              <p className="text-sm font-black text-white mt-0.5">{currencySymbol}{todaysPayment.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+
+          {/* Total Profit or Loss */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
+              {totalProfitLoss >= 0 ? (
+                <TrendingUp className="h-5 w-5 text-emerald-400" />
+              ) : (
+                <TrendingDown className="h-5 w-5 text-rose-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Total Profit or Loss</p>
+              <p className={`text-sm font-black mt-0.5 ${totalProfitLoss >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {totalProfitLoss >= 0 ? "+" : ""}{currencySymbol}{totalProfitLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Total Money Left */}
+          <div className="flex items-center gap-3 bg-slate-950/30 rounded-xl p-3 border border-slate-800/50">
+            <div className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 flex items-center justify-center shrink-0">
+              <Wallet className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Total Money Left</p>
+              <p className="text-sm font-black text-white mt-0.5">{currencySymbol}{netLiquidity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
             </div>
           </div>
         </div>
-
-        {/* Top-Right: Monthly Net Yield Pill */}
-        <div className={`rounded-2xl border p-6 text-center backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex flex-col justify-center min-h-[106px] transition-all duration-350 ${monthlyNetYield >= 0
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-rose-500/20 bg-rose-500/5"
-          }`}>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-            Monthly Net Yield
-          </p>
-          <div className="mt-2 flex items-center justify-center gap-2">
-            {monthlyNetYield >= 0 ? (
-              <TrendingUp className="h-5 w-5 text-emerald-400" />
-            ) : (
-              <TrendingDown className="h-5 w-5 text-rose-400" />
-            )}
-            <span className={`rounded-full px-4 py-1.5 text-lg font-black tracking-wide ${monthlyNetYield >= 0
-                ? "text-emerald-400 bg-emerald-500/10"
-                : "text-rose-400 bg-rose-500/10"
-              }`}>
-              {monthlyNetYield >= 0 ? "+" : ""}{currencySymbol}{monthlyNetYield.toLocaleString()}
-            </span>
-          </div>
-        </div>
-
       </div>
 
       {/* Interceptor Prompt - High Visibility Banner */}
@@ -767,7 +832,7 @@ export function MoneyModule() {
       <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
 
         {/* Core Transaction Engine Panel */}
-        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-between relative transition-all duration-550 ${
+        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-between relative z-10 transition-all duration-550 ${
           txType === "income"
             ? "border-emerald-500/30 bg-emerald-950/2 shadow-[0_0_30px_rgba(16,185,129,0.08)]"
             : "border-rose-500/30 bg-rose-950/2 shadow-[0_0_30px_rgba(239,68,68,0.08)]"
@@ -939,77 +1004,160 @@ export function MoneyModule() {
 
                 {/* Inline Category Creator Tool Popover */}
                 {showCategoryCreator && (
-                  <div className="absolute top-[75px] right-0 z-10 w-full sm:w-[320px] rounded-2xl border border-slate-800 bg-slate-955 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.6)] animate-fade-in-up">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 border-b border-slate-900 pb-2 mb-3">
-                      Create Custom Category
+                  <div className="absolute bottom-full mb-2 right-0 z-50 w-full sm:w-[680px] rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-[0_-10px_30px_rgba(0,0,0,0.8)] animate-fade-in-up">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 mb-4">
+                      {editingCategoryOriginalName ? `Edit Category: ${editingCategoryOriginalName}` : "Create Custom Category"}
                     </h4>
 
-                    <div className="space-y-3">
-                      <div className="flex flex-col gap-1">
-                        <label htmlFor="newCatName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Category Name
-                        </label>
-                        <input
-                          id="newCatName"
-                          type="text"
-                          placeholder="e.g. Shopping, Health"
-                          value={newCatName}
-                          onChange={(e) => setNewCatName(e.target.value)}
-                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
-                        />
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      
+                      {/* Left: Add / Edit Form */}
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-1">
+                          <label htmlFor="newCatName" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Category Name
+                          </label>
+                          <input
+                            id="newCatName"
+                            type="text"
+                            placeholder="e.g. Shopping, Health"
+                            value={newCatName}
+                            onChange={(e) => setNewCatName(e.target.value)}
+                            className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
+                          />
+                        </div>
 
-                      <div className="flex flex-col gap-1">
-                        <label htmlFor="newCatLimit" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Monthly Spending Cap (Limit)
-                        </label>
-                        <input
-                          id="newCatLimit"
-                          type="number"
-                          placeholder="Optional (e.g. 200)"
-                          value={newCatLimit}
-                          onChange={(e) => setNewCatLimit(e.target.value)}
-                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
-                        />
-                      </div>
+                        <div className="flex flex-col gap-1">
+                          <label htmlFor="newCatLimit" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Monthly Spending Cap (Limit)
+                          </label>
+                          <input
+                            id="newCatLimit"
+                            type="number"
+                            placeholder="Optional (e.g. 200)"
+                            value={newCatLimit}
+                            onChange={(e) => setNewCatLimit(e.target.value)}
+                            className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-slate-650"
+                          />
+                        </div>
 
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Color Tag Indicator
-                        </span>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {colorPalette.map((color) => (
-                            <button
-                              key={color.hex}
-                              type="button"
-                              onClick={() => setNewCatColor(color.hex)}
-                              className={`w-6 h-6 rounded-full transition-transform active:scale-80 cursor-pointer border ${newCatColor === color.hex
-                                  ? "scale-115 border-white ring-2 ring-[var(--rank-accent)]/50"
-                                  : "border-transparent"
-                                }`}
-                              style={{ backgroundColor: color.hex }}
-                              title={color.name}
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="newCatColor" className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Category Color Tag
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              id="newCatColor"
+                              type="color"
+                              value={newCatColor}
+                              onChange={(e) => setNewCatColor(e.target.value)}
+                              className="w-10 h-10 rounded-lg border border-slate-800 bg-slate-950 p-1 cursor-pointer outline-none transition-all focus:border-slate-600"
                             />
-                          ))}
+                            <span className="text-xs font-mono text-slate-350 font-bold uppercase tracking-wider bg-slate-950 px-2.5 py-1.5 rounded-md border border-slate-850">
+                              {newCatColor}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 justify-end pt-3 border-t border-slate-800">
+                          {editingCategoryOriginalName ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCategoryOriginalName(null);
+                                setNewCatName("");
+                                setNewCatColor("#ef4444");
+                                setNewCatLimit("");
+                              }}
+                              className="rounded-lg border border-slate-805 px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400 hover:text-white"
+                            >
+                              Cancel Edit
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setShowCategoryCreator(false)}
+                              className="rounded-lg border border-slate-800 px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400 hover:text-white"
+                            >
+                              Close
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={handleSaveCategory}
+                            className="rounded-lg bg-[var(--rank-accent)] px-3 py-1.5 text-2xs font-black uppercase tracking-wider text-slate-955 active:scale-95 transition-transform duration-100 cursor-pointer"
+                          >
+                            {editingCategoryOriginalName ? "Update" : "Save"}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex gap-2 justify-end pt-2 border-t border-slate-900">
-                        <button
-                          type="button"
-                          onClick={() => setShowCategoryCreator(false)}
-                          className="rounded-lg border border-slate-800 px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-slate-400 hover:text-white"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCreateCategory}
-                          className="rounded-lg bg-[var(--rank-accent)] px-3 py-1.5 text-2xs font-black uppercase tracking-wider text-slate-950 active:scale-95 transition-transform duration-100 cursor-pointer"
-                        >
-                          Save Category
-                        </button>
+                      {/* Right: Existing Categories Manager Table */}
+                      <div className="md:border-l md:border-slate-800 md:pl-6 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                          <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            Existing Categories
+                          </h5>
+                          <span className="text-[9px] font-mono text-slate-500 font-bold">
+                            {categories.length} total
+                          </span>
+                        </div>
+                        <div className="max-h-[220px] overflow-y-auto pr-1">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-800 text-[9px] uppercase tracking-wider text-slate-500 font-bold">
+                                <th className="py-1 pb-2">Tag</th>
+                                <th className="py-1 pb-2">Limit</th>
+                                <th className="py-1 pb-2 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/40">
+                              {categories.map((c) => (
+                                <tr key={c.name} className="hover:bg-slate-950/20 transition-colors">
+                                  <td className="py-2 flex items-center gap-2">
+                                    <span
+                                      className="w-3 h-3 rounded-full shrink-0 border border-white/20"
+                                      style={{ backgroundColor: c.color }}
+                                    />
+                                    <span className="font-bold text-slate-200 truncate max-w-[120px]" title={c.name}>
+                                      {c.name}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 text-slate-400 font-mono text-[10px]">
+                                    {c.monthlyLimit !== null ? `${currencySymbol}${c.monthlyLimit}` : "None"}
+                                  </td>
+                                  <td className="py-2 text-right">
+                                    <div className="inline-flex gap-1.5 justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingCategoryOriginalName(c.name);
+                                          setNewCatName(c.name);
+                                          setNewCatColor(c.color);
+                                          setNewCatLimit(c.monthlyLimit !== null ? String(c.monthlyLimit) : "");
+                                        }}
+                                        className="p-1 rounded bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-white active:scale-90 transition-all cursor-pointer"
+                                        title="Edit category"
+                                      >
+                                        <Edit2 className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteCategory(c.name)}
+                                        className="p-1 rounded bg-slate-850 hover:bg-slate-800 text-rose-450 hover:text-rose-400 active:scale-90 transition-all cursor-pointer"
+                                        title="Delete category"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
+
                     </div>
                   </div>
                 )}
@@ -1053,7 +1201,7 @@ export function MoneyModule() {
             {showRecurringManager ? (
               /* Recurring Rules Builder & Manager */
               <div className="space-y-4">
-                <form onSubmit={handleAddRecurringRule} className="border border-slate-800/80 bg-slate-955/35 p-4 rounded-xl space-y-3 animate-fade-in-up">
+                <form onSubmit={handleAddRecurringRule} className="border border-slate-800/80 bg-slate-950/35 p-4 rounded-xl space-y-3 animate-fade-in-up">
                   <h4 className="text-xs font-black uppercase tracking-wider text-purple-300">
                     Schedule New Recurring Rule
                   </h4>
@@ -1099,7 +1247,7 @@ export function MoneyModule() {
                       <select
                         value={newRecType}
                         onChange={(e) => setNewRecType(e.target.value as TransactionType)}
-                        className="rounded-lg border border-slate-800 bg-slate-955 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
                       >
                         <option value="expense">Expense (-)</option>
                         <option value="income">Income (+)</option>
@@ -1114,7 +1262,7 @@ export function MoneyModule() {
                         id="newRecCategorySelect"
                         value={activeRecCategory}
                         onChange={(e) => setNewRecCategory(e.target.value)}
-                        className="rounded-lg border border-slate-800 bg-slate-955 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-2 text-xs text-white outline-none focus:border-purple-500"
                       >
                         {categories.map((c) => (
                           <option key={c.name} value={c.name}>
@@ -1243,10 +1391,10 @@ export function MoneyModule() {
 
             <button
               type="button"
-              onClick={handleResetStorage}
+              onClick={handleDeleteLastMonthData}
               className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-2xs font-bold uppercase tracking-wider text-rose-350 hover:bg-rose-500/15 active:scale-95 transition-all duration-105 cursor-pointer"
             >
-              Reset Ledger
+              Delete last month & older data
             </button>
           </div>
         </div>
@@ -1331,11 +1479,10 @@ export function MoneyModule() {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Transaction Name</th>
-                  <th className="py-3 px-4">Category Badge (With Cap Alerts)</th>
-                  <th className="py-3 px-4">Amount</th>
-                  <th className="py-3 px-4 text-right w-20">Actions</th>
+                  <th className="py-3 px-4">Earning/Expense</th>
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4 text-right w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
@@ -1351,16 +1498,22 @@ export function MoneyModule() {
                   };
 
                   return (
-                    <tr key={tx.id} className="hover:bg-slate-955/15 transition-colors duration-150">
-                      <td className="py-3.5 px-4 font-mono text-xs text-slate-400">
-                        {tx.date}
-                      </td>
+                    <tr key={tx.id} className="hover:bg-slate-950/15 transition-colors duration-150">
                       <td className="py-3.5 px-4 font-bold text-slate-200">
                         {tx.name}
                       </td>
                       <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-2xs font-bold ${
+                          tx.type === "income"
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                        }`}>
+                          {tx.type === "income" ? "Earning" : "Expense"}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
                         <span
-                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition-all"
                           style={badgeStyle}
                         >
                           {(() => {
@@ -1379,31 +1532,27 @@ export function MoneyModule() {
                             );
                           })()}
                           {tx.category}
-                          {categoryData?.monthlyLimit !== null && (
-                            <span className="opacity-80 text-[10px] font-mono ml-0.5">
-                              ({Math.round(limitStatus.percent)}%)
-                            </span>
-                          )}
-                          {limitStatus.percent > 100 && (
-                            <span className="ml-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider text-red-100 bg-red-950/90 border border-red-800/80 shadow-[0_0_12px_rgba(239,68,68,0.95)] animate-pulse">
-                              OVER LIMIT
-                            </span>
-                          )}
                         </span>
                       </td>
-                      <td className={`py-3.5 px-4 font-mono text-sm font-black ${tx.type === "income" ? "text-emerald-400 font-bold" : "text-slate-400"
-                        }`}>
-                        {tx.type === "income" ? "+" : "-"}{currencySymbol}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTransaction(tx.id)}
-                          className="rounded-lg border border-rose-500/10 bg-rose-500/5 p-2 text-rose-300 hover:text-rose-450 hover:bg-rose-500/15 transition-all duration-100 active:scale-95 cursor-pointer"
-                          aria-label={`Delete transaction ${tx.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTxForBill(tx)}
+                            className="rounded-lg border border-slate-700 bg-slate-900/60 p-2 text-slate-350 hover:text-white hover:bg-slate-800 transition-all duration-100 active:scale-95 cursor-pointer"
+                            aria-label={`View receipt for ${tx.name}`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTransaction(tx.id)}
+                            className="rounded-lg border border-rose-500/10 bg-rose-500/5 p-2 text-rose-350 hover:text-rose-400 hover:bg-rose-500/15 transition-all duration-100 active:scale-95 cursor-pointer"
+                            aria-label={`Delete transaction ${tx.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1413,6 +1562,94 @@ export function MoneyModule() {
           </div>
         )}
       </div>
+
+      {/* Dot Matrix Bill Receipt Modal */}
+      {selectedTxForBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+          <style dangerouslySetInnerHTML={{ __html: `
+            @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+            .dot-matrix {
+              font-family: 'VT323', 'Courier New', Courier, monospace;
+              letter-spacing: 0.05em;
+            }
+          `}} />
+          <div className="relative max-w-xl w-full bg-[#f4f3ef] text-[#1a1a1a] border border-[#d5d4cd] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 transform scale-100 flex flex-col font-mono">
+            {/* Perforated Top edge decorative element */}
+            <div className="w-full h-3 bg-[radial-gradient(circle_at_bottom,_transparent_4px,_#f4f3ef_5px)] bg-[length:12px_12px]" />
+            
+            <div className="p-6 flex-1 flex flex-col">
+              {/* Receipt Header Info */}
+              <div className="flex justify-between items-center text-xs border-b border-dashed border-slate-400 pb-3 mb-4 dot-matrix text-lg font-bold">
+                <div>DATE: {selectedTxForBill.date}</div>
+                <div>CAT: {selectedTxForBill.category.toUpperCase()}</div>
+              </div>
+
+              {/* Transaction Alert Title */}
+              <div className="text-center font-bold text-2xl tracking-wide dot-matrix mb-4 border-b border-dashed border-slate-400 pb-2">
+                * TRANSACTION ALERT *
+              </div>
+
+              {/* Bill Card Content */}
+              <div className="flex-1 py-4 dot-matrix text-xl space-y-1 text-left md:pl-10">
+                <div>Transaction Type : {selectedTxForBill.type === "income" ? "CREDIT" : "DEBIT"}</div>
+                <div>Amount           : ₹{selectedTxForBill.amount}</div>
+                <div>Purpose/Merchant : {selectedTxForBill.name}</div>
+                <div>Status           : COMPLETED</div>
+              </div>
+
+              {/* Remaining budget limit percentage (if applicable) */}
+              {(() => {
+                const cat = categories.find((c) => c.name === selectedTxForBill.category);
+                if (selectedTxForBill.type === "expense" && cat && cat.monthlyLimit !== null && cat.monthlyLimit > 0) {
+                  const limitAmount = cat.monthlyLimit;
+                  const spentAmount = categoryExpenses[cat.name] || 0;
+                  
+                  if (spentAmount === limitAmount) {
+                    return (
+                      <div className="mt-6 border-t border-dashed border-slate-400 pt-3 text-left md:pl-10 dot-matrix text-lg font-normal space-y-1">
+                        <div>Total limit for this category reached.</div>
+                      </div>
+                    );
+                  } else if (spentAmount > limitAmount) {
+                    const extraAmount = spentAmount - limitAmount;
+                    return (
+                      <div className="mt-6 border-t border-dashed border-slate-400 pt-3 text-left md:pl-10 dot-matrix text-lg font-normal space-y-1">
+                        <div>Total limit for this category has been exceeded.</div>
+                        <div>Extra amount spent: ₹{extraAmount.toFixed(2)}</div>
+                      </div>
+                    );
+                  } else {
+                    const usedPercent = Math.round((spentAmount / limitAmount) * 100);
+                    const remainingAmount = limitAmount - spentAmount;
+                    return (
+                      <div className="mt-6 border-t border-dashed border-slate-400 pt-3 text-left md:pl-10 dot-matrix text-lg font-normal space-y-1">
+                        <div>Total limit for this category: ₹{limitAmount} (Currently used: {usedPercent}%)</div>
+                        <div>Remaining amount: ₹{remainingAmount.toFixed(2)}</div>
+                      </div>
+                    );
+                  }
+                }
+                return null;
+              })()}
+
+              {/* Perforated Divider */}
+              <div className="border-b border-dashed border-slate-400 my-4" />
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedTxForBill(null)}
+                className="w-full bg-slate-900 text-white py-2 px-4 rounded font-bold uppercase tracking-wider text-xs hover:bg-slate-800 transition-all duration-100 active:scale-95 cursor-pointer dot-matrix text-lg"
+              >
+                Close Receipt
+              </button>
+            </div>
+            
+            {/* Perforated Bottom edge decorative element */}
+            <div className="w-full h-3 bg-[radial-gradient(circle_at_top,_transparent_4px,_#f4f3ef_5px)] bg-[length:12px_12px] bg-repeat-x" />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
