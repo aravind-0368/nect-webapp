@@ -3,6 +3,32 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export interface CurrencyInfo {
+  country: string;
+  name: string;
+  code: string;
+  symbol: string;
+  flag: string;
+}
+
+export const currenciesList: CurrencyInfo[] = [
+  { flag: "🇮🇳", country: "India", name: "Indian Rupee", code: "INR", symbol: "₹" },
+  { flag: "🇺🇸", country: "USA", name: "United States Dollar", code: "USD", symbol: "$" },
+  { flag: "🇫🇷", country: "France", name: "Euro", code: "EUR", symbol: "€" },
+  { flag: "🇮🇩", country: "Indonesia", name: "Indonesian Rupiah", code: "IDR", symbol: "Rp" },
+  { flag: "🇦🇪", country: "UAE", name: "UAE Dirham", code: "AED", symbol: "د.إ" },
+  { flag: "🇱🇰", country: "Sri Lanka", name: "Sri Lankan Rupee", code: "LKR", symbol: "₨" },
+  { flag: "🇯🇵", country: "Japan", name: "Japanese Yen", code: "JPY", symbol: "¥" },
+  { flag: "🇨🇳", country: "China", name: "Chinese Yuan (Renminbi)", code: "CNY", symbol: "¥" },
+  { flag: "🇷🇺", country: "Russia", name: "Russian Ruble", code: "RUB", symbol: "₽" },
+  { flag: "🇰🇷", country: "South Korea", name: "South Korean Won", code: "KRW", symbol: "₩" },
+];
+
+export const getCurrencySymbol = (code: string): string => {
+  const found = currenciesList.find((c) => c.code === code);
+  return found ? found.symbol : "$";
+};
+
 export interface RankTier {
   name: string;
   min: number;
@@ -27,11 +53,13 @@ export function getActiveRank(points: number): RankTier {
 export type ModuleKey = "Dashboard" | "Workout" | "Food" | "Learning" | "Money" | "Tasks";
 
 export const defaultWidgets = [
-  "Resource Flow Engine",
-  "Cognitive Synaptic Gateway",
-  "Skill Matrix Hub",
-  "Kinetic Overdrive Matrix",
-  "Bounty Board Nodes"
+  "Resource Flow",
+  "Workout Chart",
+  "Study Chart",
+  "Task Board",
+  "Sleep Cycle Tracker",
+  "Category Spending breakdown",
+  "Weight & Height Tracker"
 ];
 
 interface NectState {
@@ -44,6 +72,7 @@ interface NectState {
   autoApproveTransactions: boolean;
   visibleModules: Record<ModuleKey, boolean>;
   widgetOrder: string[];
+  currency: string;
   activeBoosts: Record<string, number>; // Maps module key to expiration timestamp (ms)
   peakMentalPowerUntil: number | null; // Timestamp until which peak mental power is active
   lastMainExamCompletedAt: number | null;
@@ -77,6 +106,7 @@ interface NectState {
   toggleModule: (module: ModuleKey) => void;
   setWidgetOrder: (order: string[]) => void;
   activateBoost: (module: string, durationMs: number) => void;
+  setCurrency: (val: string) => void;
   resetAll: () => void;
 }
 
@@ -99,6 +129,7 @@ export const useNectStore = create<NectState>()(
         Tasks: true,
       },
       widgetOrder: defaultWidgets,
+      currency: "USD",
       activeBoosts: {},
       peakMentalPowerUntil: null,
       lastMainExamCompletedAt: null,
@@ -180,6 +211,8 @@ export const useNectStore = create<NectState>()(
 
       setWidgetOrder: (order) => set({ widgetOrder: order }),
 
+      setCurrency: (val) => set({ currency: val }),
+
       activateBoost: (module, durationMs) => {
         set((state) => ({
           activeBoosts: {
@@ -207,6 +240,7 @@ export const useNectStore = create<NectState>()(
             Tasks: true,
           },
           widgetOrder: defaultWidgets,
+          currency: "USD",
           activeBoosts: {},
           peakMentalPowerUntil: null,
           lastMainExamCompletedAt: null,
@@ -231,6 +265,7 @@ export const useNectStore = create<NectState>()(
         lastMainExamCompletedAt: state.lastMainExamCompletedAt,
         lastMainExamScore: state.lastMainExamScore,
         lastMainExamTitle: state.lastMainExamTitle,
+        currency: state.currency,
       }),
     }
   )

@@ -35,6 +35,19 @@ type AppShellProps = {
   onLogout: () => void;
 };
 
+function calculateAge(dobString: string): number {
+  if (!dobString) return 25;
+  const birthDate = new Date(dobString);
+  if (isNaN(birthDate.getTime())) return 25;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 const initialModules: ModuleKey[] = [
   "Dashboard",
   "Workout",
@@ -79,13 +92,45 @@ export function AppShell({ onLogout }: AppShellProps) {
     }
     return 180;
   });
+  const [dob, setDob] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("nect_telemetry_dob");
+      return saved || "";
+    }
+    return "";
+  });
   const [age, setAge] = useState(() => {
     if (typeof window !== "undefined") {
+      const savedDob = localStorage.getItem("nect_telemetry_dob");
+      if (savedDob) {
+        return calculateAge(savedDob);
+      }
       const saved = localStorage.getItem("nect_telemetry_age");
       return saved ? Number(saved) : 25;
     }
     return 25;
   });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("nect_telemetry_dob", dob);
+    }
+    if (dob) {
+      const calculated = calculateAge(dob);
+      setAge(calculated);
+    }
+  }, [dob]);
+
+  useEffect(() => {
+    if (!dob) return;
+    const interval = setInterval(() => {
+      const currentAge = calculateAge(dob);
+      if (currentAge !== age) {
+        setAge(currentAge);
+      }
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [dob, age]);
   const [biologicalSex, setBiologicalSex] = useState<"Men" | "Women">(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("nect_telemetry_sex");
@@ -219,6 +264,8 @@ export function AppShell({ onLogout }: AppShellProps) {
           setHeight={setHeight}
           age={age}
           setAge={setAge}
+          dob={dob}
+          setDob={setDob}
           biologicalSex={biologicalSex}
           setBiologicalSex={setBiologicalSex}
           activityMultiplier={activityMultiplier}
@@ -233,6 +280,7 @@ export function AppShell({ onLogout }: AppShellProps) {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onLogout={onLogout}
+        dob={dob}
       />
 
       {/* Rank Up Overlay Level-Up Interceptor */}
@@ -250,6 +298,8 @@ function ModuleWorkspace({
   setHeight,
   age,
   setAge,
+  dob,
+  setDob,
   biologicalSex,
   setBiologicalSex,
   activityMultiplier,
@@ -265,6 +315,8 @@ function ModuleWorkspace({
   setHeight: (h: number) => void;
   age: number;
   setAge: (a: number) => void;
+  dob: string;
+  setDob: (d: string) => void;
   biologicalSex: "Men" | "Women";
   setBiologicalSex: (s: "Men" | "Women") => void;
   activityMultiplier: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
@@ -283,6 +335,8 @@ function ModuleWorkspace({
         setHeight={setHeight}
         age={age}
         setAge={setAge}
+        dob={dob}
+        setDob={setDob}
         biologicalSex={biologicalSex}
         setBiologicalSex={setBiologicalSex}
         activityMultiplier={activityMultiplier}

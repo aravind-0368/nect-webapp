@@ -121,6 +121,8 @@ export function ExerciseModule({
   setHeight: propSetHeight,
   age: propAge,
   setAge: propSetAge,
+  dob: propDob,
+  setDob: propSetDob,
   biologicalSex: propSex,
   setBiologicalSex: propSetSex,
   activityMultiplier: propActivity,
@@ -134,6 +136,8 @@ export function ExerciseModule({
   setHeight?: (h: number) => void;
   age?: number;
   setAge?: (a: number) => void;
+  dob?: string;
+  setDob?: (d: string) => void;
   biologicalSex?: "Men" | "Women";
   setBiologicalSex?: (s: "Men" | "Women") => void;
   activityMultiplier?: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
@@ -231,6 +235,7 @@ export function ExerciseModule({
   const [internalWeight, setInternalWeight] = useState(75);
   const [internalHeight, setInternalHeight] = useState(180);
   const [internalAge, setInternalAge] = useState(25);
+  const [internalDob, setInternalDob] = useState("");
   const [internalSex, setInternalSex] = useState<"Men" | "Women">("Men");
   const [internalActivity, setInternalActivity] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">("Moderately Active");
   const [internalProteinFactor, setInternalProteinFactor] = useState<"Sedentary" | "Active" | "Strength">("Strength");
@@ -241,6 +246,8 @@ export function ExerciseModule({
   const setHeight = propSetHeight !== undefined ? propSetHeight : setInternalHeight;
   const age = propAge !== undefined ? propAge : internalAge;
   const setAge = propSetAge !== undefined ? propSetAge : setInternalAge;
+  const dob = propDob !== undefined ? propDob : internalDob;
+  const setDob = propSetDob !== undefined ? propSetDob : setInternalDob;
   const biologicalSex = propSex !== undefined ? propSex : internalSex;
   const setBiologicalSex = propSetSex !== undefined ? propSetSex : setInternalSex;
   const activityMultiplier = propActivity !== undefined ? propActivity : internalActivity;
@@ -600,6 +607,8 @@ export function ExerciseModule({
               weight={weight}
               age={age}
               setAge={setAge}
+              dob={dob}
+              setDob={setDob}
               biologicalSex={biologicalSex}
               setBiologicalSex={setBiologicalSex}
               activityMultiplier={activityMultiplier}
@@ -639,6 +648,8 @@ function HealthTelemetry({
   weight,
   age,
   setAge,
+  dob,
+  setDob,
   biologicalSex,
   setBiologicalSex,
   activityMultiplier,
@@ -654,6 +665,8 @@ function HealthTelemetry({
   weight: number;
   age: number;
   setAge: (value: number) => void;
+  dob: string;
+  setDob: (value: string) => void;
   biologicalSex: "Men" | "Women";
   setBiologicalSex: (value: "Men" | "Women") => void;
   activityMultiplier: "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active";
@@ -693,14 +706,24 @@ function HealthTelemetry({
         </label>
         <label className="space-y-2 block">
           <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-            Age (Years)
+            Date of Birth
           </span>
           <input
             className={`${fieldClass} w-full`}
-            min={1}
+            type="date"
+            value={dob}
+            onChange={(event) => setDob(event.target.value)}
+          />
+        </label>
+        <label className="space-y-2 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            Age (Years)
+          </span>
+          <input
+            className={`${fieldClass} w-full opacity-60 cursor-not-allowed`}
             type="number"
             value={age}
-            onChange={(event) => setAge(Number(event.target.value))}
+            readOnly
           />
         </label>
         <label className="space-y-2 block">

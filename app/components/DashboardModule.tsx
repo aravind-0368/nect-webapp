@@ -112,6 +112,7 @@ export function DashboardModule({
     smartStreak,
     healthyStreak,
     visibleModules,
+    widgetOrder,
     awardPoints,
     peakMentalPowerUntil,
     lastMainExamCompletedAt,
@@ -177,6 +178,7 @@ export function DashboardModule({
   const [sleepLogs, setSleepLogs] = useState<any[]>([]);
   const [workoutChartTab, setWorkoutChartTab] = useState<"day" | "bodypart">("day");
   const [telemetryHistory, setTelemetryHistory] = useState<any[]>([]);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Food variables
@@ -214,7 +216,7 @@ export function DashboardModule({
       setSynapticExpired(true);
       return;
     }
-    
+
     const checkExpiry = () => {
       const elapsed = Date.now() - lastMainExamCompletedAt;
       const fortyEightHours = 48 * 60 * 60 * 1000;
@@ -335,7 +337,7 @@ export function DashboardModule({
   useEffect(() => {
     if (!isLoaded) return;
     if (weight === undefined || height === undefined || age === undefined) return;
-    
+
     const storedHistory = localStorage.getItem("nect_telemetry_history");
     let history = [];
     if (storedHistory) {
@@ -345,23 +347,23 @@ export function DashboardModule({
         console.error(e);
       }
     }
-    
+
     if (history.length === 0) return; // wait for hydration seed
 
     const currentAgeLabel = `Age ${age}`;
     const existingIndex = history.findIndex((entry: any) => entry.ageLabel === currentAgeLabel);
-    
+
     if (existingIndex >= 0) {
       history[existingIndex].weight = weight;
       history[existingIndex].height = height;
     } else {
       history.push({ ageLabel: currentAgeLabel, weight, height });
     }
-    
+
     if (history.length > 7) {
       history = history.slice(history.length - 7);
     }
-    
+
     localStorage.setItem("nect_telemetry_history", JSON.stringify(history));
     setTelemetryHistory(history);
   }, [weight, height, age, isLoaded]);
@@ -426,7 +428,7 @@ export function DashboardModule({
   const pieData = useMemo(() => {
     const expenseMap: Record<string, number> = {};
     const txList = transactions.length > 0 ? transactions : [];
-    
+
     txList.filter(t => t.type === "expense").forEach(t => {
       expenseMap[t.category] = (expenseMap[t.category] || 0) + t.amount;
     });
@@ -549,37 +551,51 @@ export function DashboardModule({
     return { completed, total };
   }, [tasks]);
 
-  // --- RESOURCE FLOW DATA (Last 7 Days) ---
+  // --- RESOURCE FLOW DATA (Current Month, Day 1 to End of Month) ---
   const resourceFlowData = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth(); // 0-indexed
+    
+    // Get total number of days in the current month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
     const dates = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split("T")[0]);
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayStr = String(day).padStart(2, "0");
+      const monthStr = String(month + 1).padStart(2, "0");
+      const dateStr = `${year}-${monthStr}-${dayStr}`;
+      dates.push({
+        dateStr,
+        dayNum: day
+      });
     }
 
     const txList = transactions.length > 0 ? transactions : [
-      { id: "1", type: "income", amount: 400, date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
-      { id: "2", type: "expense", amount: 120, date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
-      { id: "3", type: "income", amount: 250, date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] },
-      { id: "4", type: "expense", amount: 90, date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0] }
+      { id: "1", type: "income", amount: 400, date: `${year}-${String(month + 1).padStart(2, "0")}-05` },
+      { id: "2", type: "expense", amount: 120, date: `${year}-${String(month + 1).padStart(2, "0")}-10` },
+      { id: "3", type: "income", amount: 250, date: `${year}-${String(month + 1).padStart(2, "0")}-15` },
+      { id: "4", type: "expense", amount: 90, date: `${year}-${String(month + 1).padStart(2, "0")}-20` }
     ] as Transaction[];
 
-    return dates.map((dateStr) => {
+    return dates.map(({ dateStr, dayNum }) => {
       const dayTxs = txList.filter(t => t.date === dateStr);
       const income = dayTxs.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
       const expense = dayTxs.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
-      const dateObj = new Date(dateStr + "T00:00:00");
-      const label = dateObj.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const label = String(dayNum);
 
-      return { name: label, income, expense };
+      const dateObj = new Date(year, month, dayNum);
+      const monthName = dateObj.toLocaleDateString("en-US", { month: "long" });
+      const tooltipLabel = `${dayNum} ${monthName} ${year}`;
+
+      return { name: label, tooltipLabel, income, expense };
     });
   }, [transactions]);
 
   // Radial Chart Gauge Data & Info for Study progress
   const studyProgressDetails = useMemo(() => {
     const focusPct = Math.min(100, Math.round((learningTelemetry.hours / learningTelemetry.target) * 100));
-    
+
     const completedRevisions = revisions.filter(r => r.checked).length;
     const totalRevisions = revisions.length || 5;
     const revisionsPct = Math.min(100, Math.round((completedRevisions / totalRevisions) * 100));
@@ -642,11 +658,11 @@ export function DashboardModule({
           />
           <div className="text-center">
             <span className="block text-[8px] font-black tracking-[0.25em] text-slate-500 uppercase leading-none">RANK</span>
-            <span 
-              className="block text-sm font-black uppercase tracking-wider mt-1" 
-              style={{ 
-                color: activeRank.color, 
-                textShadow: `0 0 10px ${activeRank.color}40` 
+            <span
+              className="block text-sm font-black uppercase tracking-wider mt-1"
+              style={{
+                color: activeRank.color,
+                textShadow: `0 0 10px ${activeRank.color}40`
               }}
             >
               {activeRank.name}
@@ -658,7 +674,7 @@ export function DashboardModule({
         <div className="flex flex-wrap items-center justify-center md:justify-end gap-5 shrink-0">
           {visibleModules.Workout && (
             <div className="flex flex-col items-center gap-1.5 shrink-0">
-              <button 
+              <button
                 type="button"
                 onClick={() => incrementPowerStreak()}
                 className="relative w-12 h-12 rounded-full bg-slate-950/70 border border-orange-500/30 flex flex-col items-center justify-center cursor-pointer hover:border-orange-500/60 hover:bg-orange-500/10 active:scale-95 transition-all duration-200 group shadow-[0_0_15px_rgba(249,115,22,0.05)] hover:shadow-[0_0_20px_rgba(249,115,22,0.15)]"
@@ -674,7 +690,7 @@ export function DashboardModule({
           )}
           {visibleModules.Learning && (
             <div className="flex flex-col items-center gap-1.5 shrink-0">
-              <button 
+              <button
                 type="button"
                 onClick={() => incrementSmartStreak()}
                 className="relative w-12 h-12 rounded-full bg-slate-950/70 border border-indigo-500/30 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/60 hover:bg-indigo-500/10 active:scale-95 transition-all duration-200 group shadow-[0_0_15px_rgba(99,102,241,0.05)] hover:shadow-[0_0_20px_rgba(99,102,241,0.15)]"
@@ -690,7 +706,7 @@ export function DashboardModule({
           )}
           {visibleModules.Food && (
             <div className="flex flex-col items-center gap-1.5 shrink-0">
-              <button 
+              <button
                 type="button"
                 onClick={() => incrementHealthyStreak()}
                 className="relative w-12 h-12 rounded-full bg-slate-950/70 border border-emerald-500/30 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500/60 hover:bg-emerald-500/10 active:scale-95 transition-all duration-200 group shadow-[0_0_15px_rgba(16,185,129,0.05)] hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]"
@@ -710,665 +726,689 @@ export function DashboardModule({
       {/* 1.5 METRIC CARDS (Fuel cells) */}
       {visibleModules.Food && (
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Calorie Card (Total Energy Pool) */}
-            {(() => {
-              const isOverloaded = foodTelemetry.calories > caloriesTarget;
-              const progressPercent = Math.min(100, Math.round((foodTelemetry.calories / caloriesTarget) * 100));
-              return (
-                <div
-                  className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isOverloaded
-                      ? "border-red-500 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse"
-                      : "border-yellow-500/20 bg-slate-900/40 hover:border-yellow-500/45 hover:shadow-[0_0_20px_rgba(234,179,8,0.06)]"
-                    }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isOverloaded ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"}`}>
-                        <Zap className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black tracking-widest text-slate-350 uppercase">CALORIES</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Energy Pool</p>
-                      </div>
+          {/* Calorie Card (Total Energy Pool) */}
+          {(() => {
+            const isOverloaded = foodTelemetry.calories > caloriesTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.calories / caloriesTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isOverloaded
+                  ? "border-red-500 bg-red-950/20 shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse"
+                  : "border-yellow-500/20 bg-slate-900/40 hover:border-yellow-500/45 hover:shadow-[0_0_20px_rgba(234,179,8,0.06)]"
+                  }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isOverloaded ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-yellow-500/10 border-yellow-500/25 text-yellow-400"}`}>
+                      <Zap className="h-5 w-5" />
                     </div>
-                    {isOverloaded ? (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/85 border border-red-500 text-red-400 px-2 py-0.5 rounded shadow-[0_0_10px_rgba(239,68,68,0.3)]">
-                        ⚠ OVERLOAD
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
-                        STABLE
-                      </span>
-                    )}
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-350 uppercase">CALORIES</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Energy Pool</p>
+                    </div>
                   </div>
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-end">
-                      <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
-                        {foodTelemetry.calories} <span className="text-xs text-slate-500 font-bold uppercase font-sans">kcal</span>
-                      </span>
-                      <span className="text-xs text-slate-400 font-bold font-mono">
-                        / {caloriesTarget} Target
-                      </span>
-                    </div>
-                    {/* Glowing Progress Bar */}
-                    <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${progressPercent}%`,
-                          backgroundColor: isOverloaded ? "#ef4444" : "#eab308",
-                          boxShadow: isOverloaded ? "0 0 10px #ef4444" : "0 0 8px #eab308"
-                        }}
-                      />
-                    </div>
+                  {isOverloaded ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/85 border border-red-500 text-red-400 px-2 py-0.5 rounded shadow-[0_0_10px_rgba(239,68,68,0.3)]">
+                      ⚠ OVERLOAD
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                      STABLE
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.calories} <span className="text-xs text-slate-500 font-bold uppercase font-sans">kcal</span>
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {caloriesTarget} Target
+                    </span>
+                  </div>
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: isOverloaded ? "#ef4444" : "#eab308",
+                        boxShadow: isOverloaded ? "0 0 10px #ef4444" : "0 0 8px #eab308"
+                      }}
+                    />
                   </div>
                 </div>
-              );
-            })()}
+              </div>
+            );
+          })()}
 
-            {/* Protein Card (Muscle Repair) */}
-            {(() => {
-              const isGoalMet = foodTelemetry.protein >= proteinTarget;
-              const progressPercent = Math.min(100, Math.round((foodTelemetry.protein / proteinTarget) * 100));
-              return (
-                <div
-                  className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
-                      ? "border-red-500 bg-red-950/15 shadow-[0_0_20px_rgba(239,68,68,0.22)]"
-                      : "border-red-500/20 bg-slate-900/40 hover:border-red-500/45 hover:shadow-[0_0_20px_rgba(239,68,68,0.06)]"
-                    }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-red-500/10 border-red-500/35 text-red-400" : "bg-red-500/5 border-red-500/15 text-red-400"}`}>
-                        <Beef className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">PROTEIN</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Muscle Repair</p>
-                      </div>
+          {/* Protein Card (Muscle Repair) */}
+          {(() => {
+            const isGoalMet = foodTelemetry.protein >= proteinTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.protein / proteinTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
+                  ? "border-red-500 bg-red-950/15 shadow-[0_0_20px_rgba(239,68,68,0.22)]"
+                  : "border-red-500/20 bg-slate-900/40 hover:border-red-500/45 hover:shadow-[0_0_20px_rgba(239,68,68,0.06)]"
+                  }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-red-500/10 border-red-500/35 text-red-400" : "bg-red-500/5 border-red-500/15 text-red-400"}`}>
+                      <Beef className="h-5 w-5" />
                     </div>
-                    {isGoalMet ? (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/80 border border-red-500 text-red-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(239,68,68,0.25)]">
-                        ✓ SECURED
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
-                        CHARGING
-                      </span>
-                    )}
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">PROTEIN</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Muscle Repair</p>
+                    </div>
+                  </div>
+                  {isGoalMet ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-red-950/80 border border-red-500 text-red-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(239,68,68,0.25)]">
+                      ✓ SECURED
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                      CHARGING
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.protein}g
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {proteinTarget}g Target
+                    </span>
                   </div>
 
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-end">
-                      <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
-                        {foodTelemetry.protein}g
-                      </span>
-                      <span className="text-xs text-slate-400 font-bold font-mono">
-                        / {proteinTarget}g Target
-                      </span>
-                    </div>
-
-                    {/* Glowing Progress Bar */}
-                    <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${progressPercent}%`,
-                          backgroundColor: "#ef4444",
-                          boxShadow: isGoalMet ? "0 0 12px #ef4444" : "0 0 6px #ef4444"
-                        }}
-                      />
-                    </div>
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: "#ef4444",
+                        boxShadow: isGoalMet ? "0 0 12px #ef4444" : "0 0 6px #ef4444"
+                      }}
+                    />
                   </div>
                 </div>
-              );
-            })()}
+              </div>
+            );
+          })()}
 
-            {/* Fiber Card (System Utility) */}
-            {(() => {
-              const isGoalMet = foodTelemetry.fiber >= fiberTarget;
-              const progressPercent = Math.min(100, Math.round((foodTelemetry.fiber / fiberTarget) * 100));
-              return (
-                <div
-                  className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
-                      ? "border-emerald-500 bg-emerald-950/15 shadow-[0_0_20px_rgba(16,185,129,0.22)]"
-                      : "border-emerald-500/20 bg-slate-900/40 hover:border-emerald-500/45 hover:shadow-[0_0_20px_rgba(16,185,129,0.06)]"
-                    }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400" : "bg-emerald-500/5 border-emerald-500/15 text-emerald-400"}`}>
-                        <Leaf className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">FIBER</h4>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Utility</p>
-                      </div>
+          {/* Fiber Card (System Utility) */}
+          {(() => {
+            const isGoalMet = foodTelemetry.fiber >= fiberTarget;
+            const progressPercent = Math.min(100, Math.round((foodTelemetry.fiber / fiberTarget) * 100));
+            return (
+              <div
+                className={`rounded-2xl border p-5 backdrop-blur-sm transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[155px] ${isGoalMet
+                  ? "border-emerald-500 bg-emerald-950/15 shadow-[0_0_20px_rgba(16,185,129,0.22)]"
+                  : "border-emerald-500/20 bg-slate-900/40 hover:border-emerald-500/45 hover:shadow-[0_0_20px_rgba(16,185,129,0.06)]"
+                  }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isGoalMet ? "bg-emerald-500/10 border-emerald-500/35 text-emerald-400" : "bg-emerald-500/5 border-emerald-500/15 text-emerald-400"}`}>
+                      <Leaf className="h-5 w-5" />
                     </div>
-                    {isGoalMet ? (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-500 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
-                        ✓ OPTIMAL
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
-                        CHARGING
-                      </span>
-                    )}
+                    <div>
+                      <h4 className="text-xs font-black tracking-widest text-slate-355 uppercase">FIBER</h4>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Utility</p>
+                    </div>
+                  </div>
+                  {isGoalMet ? (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-500 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                      ✓ OPTIMAL
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black tracking-widest uppercase bg-slate-950/80 border border-slate-800 text-slate-500 px-2 py-0.5 rounded">
+                      CHARGING
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  <div className="flex justify-between items-end">
+                    <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
+                      {foodTelemetry.fiber.toFixed(1)}g
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold font-mono">
+                      / {fiberTarget}g Target
+                    </span>
                   </div>
 
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-end">
-                      <span className="text-2xl font-black text-white leading-none font-mono tracking-tight">
-                        {foodTelemetry.fiber.toFixed(1)}g
-                      </span>
-                      <span className="text-xs text-slate-400 font-bold font-mono">
-                        / {fiberTarget}g Target
-                      </span>
-                    </div>
-
-                    {/* Glowing Progress Bar */}
-                    <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${progressPercent}%`,
-                          backgroundColor: "#10b981",
-                          boxShadow: isGoalMet ? "0 0 12px #10b981" : "0 0 6px #10b981"
-                        }}
-                      />
-                    </div>
+                  {/* Glowing Progress Bar */}
+                  <div className="h-2 w-full rounded-full bg-slate-950/80 overflow-hidden border border-slate-850">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: "#10b981",
+                        boxShadow: isGoalMet ? "0 0 12px #10b981" : "0 0 6px #10b981"
+                      }}
+                    />
                   </div>
                 </div>
-              );
-            })()}
+              </div>
+            );
+          })()}
         </div>
       )}
 
       {/* 2. MAIN GRID VIEW */}
       <div className="grid gap-6 grid-cols-12">
-        {/* A. Resource Flow - Full Width */}
-        {visibleModules.Money && (
-          <div className="col-span-12">
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
-              style={{ 
-                height: "320px",
-                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
-              }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4 text-emerald-400" /> Resource Flow
-                </h3>
-                <div className="flex items-center gap-3 text-[10px] font-black uppercase text-slate-500">
-                  <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
-                  <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Expense</span>
-                </div>
-              </div>
+        {widgetOrder.map((widgetName) => {
+          if (widgetName === "Resource Flow") {
+            return (
+              visibleModules.Money && (
+                <div key={widgetName} className="col-span-12">
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+                    style={{
+                      height: "320px",
+                      borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <DollarSign className="h-4 w-4 text-emerald-400" /> Resource Flow
+                      </h3>
+                      <div className="flex items-center gap-3 text-[10px] font-black uppercase text-slate-500">
+                        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Income</span>
+                        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" /> Expense</span>
+                      </div>
+                    </div>
 
-              <div className="w-full flex-1 mt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={resourceFlowData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="incomeGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="expenseGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
-                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
-                      itemStyle={{ color: "#f8fafc" }}
-                    />
-                    <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#incomeGlow)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="expense" stroke="#f43f5e" fillOpacity={1} fill="url(#expenseGlow)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* B. Workout Chart - Left Side */}
-        {visibleModules.Workout && (
-          <div className={`col-span-12 ${visibleModules.Learning ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between transition-all duration-300 min-h-[300px]"
-              style={{ 
-                borderColor: `color-mix(in srgb, var(--rank-accent) 12%, transparent)`, 
-                boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 2%, transparent)` 
-              }}
-            >
-              <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
-                <div className="flex items-center gap-4">
-                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                    <Dumbbell className="h-4 w-4 text-emerald-450" /> Workout Chart
-                  </h3>
-                  <div className="flex rounded-lg bg-slate-955/65 p-0.5 border border-slate-850">
-                    <button
-                      type="button"
-                      onClick={() => setWorkoutChartTab("day")}
-                      className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${
-                        workoutChartTab === "day" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
-                      }`}
-                    >
-                      By Day
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWorkoutChartTab("bodypart")}
-                      className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${
-                        workoutChartTab === "bodypart" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
-                      }`}
-                    >
-                      By Body Part
-                    </button>
+                    <div className="w-full flex-1 mt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={resourceFlowData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="incomeGlow" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                            </linearGradient>
+                            <linearGradient id="expenseGlow" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <Tooltip
+                            labelFormatter={(label, items) => {
+                              if (items && items[0] && items[0].payload) {
+                                return items[0].payload.tooltipLabel;
+                              }
+                              return label;
+                            }}
+                            contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                            labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                            itemStyle={{ color: "#f8fafc" }}
+                          />
+                          <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#incomeGlow)" strokeWidth={2} />
+                          <Area type="monotone" dataKey="expense" stroke="#f43f5e" fillOpacity={1} fill="url(#expenseGlow)" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
+              )
+            );
+          }
 
-                <span className="text-[8px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
-                  Refreshes Sunday
-                </span>
-              </div>
+          if (widgetName === "Workout Chart") {
+            return (
+              visibleModules.Workout && (
+                <div key={widgetName} className={`col-span-12 ${visibleModules.Learning ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between transition-all duration-300 min-h-[300px]"
+                    style={{
+                      borderColor: `color-mix(in srgb, var(--rank-accent) 12%, transparent)`,
+                      boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 2%, transparent)`
+                    }}
+                  >
+                    <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                      <div className="flex items-center gap-4">
+                        <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                          <Dumbbell className="h-4 w-4 text-emerald-455" /> Workout Chart
+                        </h3>
+                        <div className="flex rounded-lg bg-slate-955/65 p-0.5 border border-slate-850">
+                          <button
+                            type="button"
+                            onClick={() => setWorkoutChartTab("day")}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${workoutChartTab === "day" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
+                              }`}
+                          >
+                            By Day
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWorkoutChartTab("bodypart")}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-100 ${workoutChartTab === "bodypart" ? "bg-[var(--rank-accent)]/15 text-white" : "text-slate-500 hover:text-slate-300"
+                              }`}
+                          >
+                            By Body Part
+                          </button>
+                        </div>
+                      </div>
 
-              {/* Render Bar Chart */}
-              <div className="w-full h-44 mt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={workoutChartTab === "day" ? workoutsByDayData : workoutsByBodyPartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
-                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
-                      itemStyle={{ color: "#f8fafc" }}
-                    />
-                    <Bar dataKey="completed" fill="var(--rank-accent)" radius={[4, 4, 0, 0]} name="Workouts Completed" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              
-              <div className="text-[9px] text-slate-500 font-semibold text-center border-t border-slate-850/60 pt-2 shrink-0">
-                Weekly Average Compliance: <span className="font-bold text-slate-355">{averageWeeklyCompliance}%</span>
-              </div>
-            </div>
-          </div>
-        )}
+                      <span className="text-[8px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                        Refreshes Sunday
+                      </span>
+                    </div>
 
-        {/* C. Study Chart - Right Side */}
-        {visibleModules.Learning && (
-          <div className={`col-span-12 ${visibleModules.Workout ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
-            {showSynapticGateway && (
-              <div 
-                className="p-6 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col items-center justify-between h-[236px] transition-all duration-300"
-                style={{ borderColor: `color-mix(in srgb, var(--rank-accent) 15%, transparent)`, boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 3%, transparent)` }}
-              >
-                <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-3">
-                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                    <Brain className="h-4 w-4 text-purple-400" /> Synaptic Gateway
-                  </h3>
-                  <span className="text-[9px] font-black tracking-widest uppercase bg-purple-950/80 border border-purple-800 text-purple-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.25)] animate-pulse">
-                    ACTIVE
-                  </span>
-                </div>
+                    <div className="w-full h-44 mt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={workoutChartTab === "day" ? workoutsByDayData : workoutsByBodyPartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                          <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} allowDecimals={false} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                            labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                            itemStyle={{ color: "#f8fafc" }}
+                          />
+                          <Bar dataKey="completed" fill="var(--rank-accent)" radius={[4, 4, 0, 0]} name="Workouts Completed" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
 
-                <div className="relative flex items-center justify-center my-2">
-                  <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="#0f172a" strokeWidth="8" />
-                    <circle 
-                      cx="50" 
-                      cy="50" 
-                      r="40" 
-                      fill="transparent" 
-                      stroke="var(--rank-accent)" 
-                      strokeWidth="8"
-                      strokeDasharray={`${2 * Math.PI * 40}`}
-                      strokeDashoffset={`${2 * Math.PI * 40 * (1 - (lastMainExamScore ?? 0) / 100)}`}
-                      strokeLinecap="round"
-                      className="transition-all duration-1000 ease-out"
-                      style={{ filter: `drop-shadow(0 0 4px var(--rank-accent))` }} 
-                    />
-                  </svg>
-                  <div className="absolute text-center">
-                    <span className="text-2xl font-black text-white leading-none font-mono">
-                      {lastMainExamScore}%
-                    </span>
+                    <div className="text-[9px] text-slate-500 font-semibold text-center border-t border-slate-850/60 pt-2 shrink-0">
+                      Weekly Average Compliance: <span className="font-bold text-slate-355">{averageWeeklyCompliance}%</span>
+                    </div>
                   </div>
                 </div>
+              )
+            );
+          }
 
-                <div className="text-center w-full">
-                  <p className="text-[10px] text-slate-550 font-bold uppercase tracking-wider">
-                    CURRENT SYNAPTIC WINDOW
-                  </p>
-                  <p className="text-xs font-bold text-slate-200 truncate mt-0.5 px-2" title={lastMainExamTitle ?? "Examination"}>
-                    {lastMainExamTitle || "Main Exam"}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
-              style={{ height: showSynapticGateway ? "160px" : "236px" }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <BookOpen className="h-4 w-4 text-indigo-400" /> Study Chart
-                </h3>
-                <span className="text-[8px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(99,102,241,0.25)]">
-                  Refreshes Daily
-                </span>
-              </div>
-
-              <div className="flex-1 flex items-center justify-around gap-4 mt-2">
-                {/* Left: Total Study Time */}
-                <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
-                  <Timer className="h-5 w-5 text-indigo-400 mb-1" />
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Total Study Time</span>
-                  <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
-                    {learningTelemetry.hours} <span className="text-[10px] text-slate-400">HRS</span>
-                  </span>
-                </div>
-
-                {/* Right: Total Revisions Done */}
-                <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
-                  <CheckSquare className="h-5 w-5 text-emerald-450 mb-1" />
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Revisions Done</span>
-                  <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
-                    {studyProgressDetails.completedRevisions} <span className="text-[10px] text-slate-400">/ {studyProgressDetails.totalRevisions}</span>
-                  </span>
-                  <span className="text-[8px] font-black text-emerald-450 mt-1 uppercase tracking-widest bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/40">
-                    {studyProgressDetails.revisionsPct}% Done
-                  </span>
-                </div>
-              </div>
-
-              {!showSynapticGateway && learningTelemetry.closestExam && (
-                <div className="flex items-center gap-2 text-red-405 bg-red-955 border border-red-900/60 p-2 rounded-xl animate-pulse mt-2">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
-                  <div className="overflow-hidden leading-tight flex-1">
-                    <span className="text-[8px] font-black tracking-wider uppercase block text-red-100">CRITICAL WAR</span>
-                    <span className="text-[8px] font-bold text-slate-355 truncate block">
-                      {learningTelemetry.closestExam.title}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* D. Task Board - Full Width at bottom */}
-        {visibleModules.Tasks && (
-          <div className="col-span-12">
-            <div
-              className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300"
-              style={{ borderColor: `${accentColor}20` }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850 pb-3 mb-4">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <ListTodo className="h-4 w-4 text-amber-400" /> Task Board
-                </h3>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl">
-                  {taskTelemetry.completed} / {taskTelemetry.total} Completed
-                </span>
-              </div>
-
-              {tasks.length === 0 ? (
-                <div className="text-center py-6 text-slate-500 text-xs italic">
-                  No bounties active. Add tasks inside the Tasks module to list them here.
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                  {tasks.map((task) => (
+          if (widgetName === "Study Chart") {
+            return (
+              visibleModules.Learning && (
+                <div key={widgetName} className={`col-span-12 ${visibleModules.Workout ? "lg:col-span-6" : ""} flex flex-col gap-6`}>
+                  {showSynapticGateway && (
                     <div
-                      key={task.id}
-                      onClick={() => toggleDashboardTask(task.id)}
-                      className={`flex items-center gap-3 rounded-xl border p-3.5 bg-slate-955/45 cursor-pointer select-none active:scale-[0.98] transition-all hover:border-slate-700 ${task.completed ? "opacity-60 border-slate-900" : "border-slate-850"
-                        }`}
+                      className="p-6 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col items-center justify-between h-[236px] transition-all duration-300"
+                      style={{ borderColor: `color-mix(in srgb, var(--rank-accent) 15%, transparent)`, boxShadow: `0 4px 20px color-mix(in srgb, var(--rank-accent) 3%, transparent)` }}
                     >
-                      <button
-                        type="button"
-                        className="text-slate-400 hover:text-white transition-colors"
-                      >
-                        {task.completed ? (
-                          <CheckSquare className="h-5 w-5 text-emerald-400 shrink-0" />
-                        ) : (
-                          <Square className="h-5 w-5 text-slate-600 shrink-0" />
-                        )}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-bold truncate ${task.completed ? "line-through text-slate-500" : "text-slate-200"}`}>
-                          {task.title}
+                      <div className="w-full flex items-center justify-between border-b border-slate-850/60 pb-3">
+                        <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                          <Brain className="h-4 w-4 text-purple-400" /> Synaptic Gateway
+                        </h3>
+                        <span className="text-[9px] font-black tracking-widest uppercase bg-purple-950/80 border border-purple-800 text-purple-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.25)] animate-pulse">
+                          ACTIVE
+                        </span>
+                      </div>
+
+                      <div className="relative flex items-center justify-center my-2">
+                        <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 100 100">
+                          <circle cx="50" cy="50" r="40" fill="transparent" stroke="#0f172a" strokeWidth="8" />
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="40"
+                            fill="transparent"
+                            stroke="var(--rank-accent)"
+                            strokeWidth="8"
+                            strokeDasharray={`${2 * Math.PI * 40}`}
+                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (lastMainExamScore ?? 0) / 100)}`}
+                            strokeLinecap="round"
+                            className="transition-all duration-1000 ease-out"
+                            style={{ filter: `drop-shadow(0 0 4px var(--rank-accent))` }}
+                          />
+                        </svg>
+                        <div className="absolute text-center">
+                          <span className="text-2xl font-black text-white leading-none font-mono">
+                            {lastMainExamScore}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-center w-full">
+                        <p className="text-[10px] text-slate-550 font-bold uppercase tracking-wider">
+                          CURRENT SYNAPTIC WINDOW
                         </p>
-                        <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
-                          ? "bg-rose-950/50 border-rose-900 text-rose-350"
-                          : task.priority === "medium"
-                            ? "bg-amber-950/50 border-amber-900 text-amber-350"
-                            : "bg-slate-900 border-slate-800 text-slate-400"
-                          }`}>
-                          {task.priority}
+                        <p className="text-xs font-bold text-slate-200 truncate mt-0.5 px-2" title={lastMainExamTitle ?? "Examination"}>
+                          {lastMainExamTitle || "Main Exam"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+                    style={{ height: showSynapticGateway ? "160px" : "236px" }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850/60 pb-2">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <BookOpen className="h-4 w-4 text-indigo-400" /> Study Chart
+                      </h3>
+                      <span className="text-[8px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(99,102,241,0.25)]">
+                        Refreshes Daily
+                      </span>
+                    </div>
+
+                    <div className="flex-1 flex items-center justify-around gap-4 mt-2">
+                      {/* Left: Total Study Time */}
+                      <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
+                        <Timer className="h-5 w-5 text-indigo-400 mb-1" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Total Study Time</span>
+                        <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
+                          {learningTelemetry.hours} <span className="text-[10px] text-slate-400">HRS</span>
+                        </span>
+                      </div>
+
+                      {/* Right: Total Revisions Done */}
+                      <div className="flex flex-col items-center text-center p-3 rounded-xl border border-slate-850 bg-slate-955/30 w-[45%]">
+                        <CheckSquare className="h-5 w-5 text-emerald-455 mb-1" />
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Revisions Done</span>
+                        <span className="text-xl font-black text-slate-100 mt-1 tracking-wide leading-none font-mono">
+                          {studyProgressDetails.completedRevisions} <span className="text-[10px] text-slate-400">/ {studyProgressDetails.totalRevisions}</span>
+                        </span>
+                        <span className="text-[8px] font-black text-emerald-455 mt-1 uppercase tracking-widest bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-900/40">
+                          {studyProgressDetails.revisionsPct}% Done
                         </span>
                       </div>
                     </div>
-                  ))}
+
+                    {!showSynapticGateway && learningTelemetry.closestExam && (
+                      <div className="flex items-center gap-2 text-red-405 bg-red-955 border border-red-900/60 p-2 rounded-xl animate-pulse mt-2">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                        <div className="overflow-hidden leading-tight flex-1">
+                          <span className="text-[8px] font-black tracking-wider uppercase block text-red-100">CRITICAL WAR</span>
+                          <span className="text-[8px] font-bold text-slate-355 truncate block">
+                            {learningTelemetry.closestExam.title}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              )
+            );
+          }
 
-        {/* E. Sleep Cycle Chart - Full Width */}
-        {visibleModules.Workout && (
-          <div className="col-span-12">
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
-              style={{ 
-                height: "320px",
-                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
-              }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <Moon className="h-4 w-4 text-indigo-400" /> Sleep Cycle Tracker
-                </h3>
-                <span className="text-[9px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.25)]">
-                  Weekly Duration
-                </span>
-              </div>
-
-              <div className="w-full flex-1 mt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sleepChartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="sleepGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
-                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
-                      itemStyle={{ color: "#f8fafc" }}
-                    />
-                    <Area type="monotone" dataKey="hours" stroke="#8b5cf6" fillOpacity={1} fill="url(#sleepGlow)" strokeWidth={2} name="Hours Slept" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* F. Category Spending breakdown (Pie Chart) - Side-by-Side */}
-        {visibleModules.Money && (
-          <div className="col-span-12 lg:col-span-6">
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
-              style={{ 
-                minHeight: "360px",
-                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
-              }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <DollarSign className="h-4 w-4 text-emerald-400" /> Category Spending breakdown
-                </h3>
-                <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
-                  Monthly Expenses
-                </span>
-              </div>
-
-              {pieData.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center py-12 text-slate-500 text-xs italic">
-                  No expense transactions logged for this month.
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-around gap-4 mt-4">
-                  {/* Pie chart container */}
-                  <div className="w-48 h-48 relative shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={45}
-                          outerRadius={65}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: any) => [`₹${value}`, "Amount Spent"]}
-                          contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-none">
-                      <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Top Spend</span>
-                      <span className="text-[10px] font-bold text-slate-200 mt-0.5 truncate max-w-[100px]" title={pieData[0]?.name}>
-                        {pieData[0]?.name || "N/A"}
-                      </span>
-                      <span className="text-xs font-black text-rose-455 mt-0.5">
-                        ₹{pieData[0]?.value || 0}
+          if (widgetName === "Task Board") {
+            return (
+              visibleModules.Tasks && (
+                <div key={widgetName} className="col-span-12">
+                  <div
+                    className="rounded-2xl border bg-slate-900/40 p-5 backdrop-blur-sm transition-all duration-300"
+                    style={{ borderColor: `${accentColor}20` }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850 pb-3 mb-4">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <ListTodo className="h-4 w-4 text-amber-400" /> Task Board
+                      </h3>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-xl">
+                        {taskTelemetry.completed} / {taskTelemetry.total} Completed
                       </span>
                     </div>
-                  </div>
 
-                  {/* Legend list */}
-                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md max-h-[140px] overflow-y-auto pr-1">
-                    {pieData.map((item, index) => {
-                      const totalSpent = pieData.reduce((sum, d) => sum + d.value, 0);
-                      const percent = totalSpent > 0 ? Math.round((item.value / totalSpent) * 100) : 0;
-                      return (
-                        <div 
-                          key={item.name}
-                          className="flex items-center justify-between p-2 rounded-xl border border-slate-850 bg-slate-955/30"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                            <span className="text-[10px] font-bold text-slate-355 truncate">{item.name}</span>
+                    {tasks.length === 0 ? (
+                      <div className="text-center py-6 text-slate-500 text-xs italic">
+                        No bounties active. Add tasks inside the Tasks module to list them here.
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                        {tasks.map((task) => (
+                          <div
+                            key={task.id}
+                            onClick={() => toggleDashboardTask(task.id)}
+                            className={`flex items-center gap-3 rounded-xl border p-3.5 bg-slate-955/45 cursor-pointer select-none active:scale-[0.98] transition-all hover:border-slate-700 ${task.completed ? "opacity-60 border-slate-900" : "border-slate-850"
+                              }`}
+                          >
+                            <button
+                              type="button"
+                              className="text-slate-400 hover:text-white transition-colors"
+                            >
+                              {task.completed ? (
+                                <CheckSquare className="h-5 w-5 text-emerald-400 shrink-0" />
+                              ) : (
+                                <Square className="h-5 w-5 text-slate-600 shrink-0" />
+                              )}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-xs font-bold truncate ${task.completed ? "line-through text-slate-500" : "text-slate-200"}`}>
+                                {task.title}
+                              </p>
+                              <span className={`inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full mt-1.5 border tracking-wider ${task.priority === "high"
+                                ? "bg-rose-950/50 border-rose-900 text-rose-350"
+                                : task.priority === "medium"
+                                  ? "bg-amber-950/50 border-amber-900 text-amber-350"
+                                  : "bg-slate-900 border-slate-800 text-slate-400"
+                                }`}>
+                                {task.priority}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right ml-2 shrink-0">
-                            <p className="text-[10px] font-black text-slate-100">₹{item.value}</p>
-                            <p className="text-[8px] font-bold text-slate-500">{percent}%</p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              )
+            );
+          }
 
-        {/* G. Weight & Height Tracker (Dual-Axis Line Chart) - Side-by-Side */}
-        {visibleModules.Workout && (
-          <div className="col-span-12 lg:col-span-6">
-            <div 
-              className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
-              style={{ 
-                minHeight: "360px",
-                borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
-              }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
-                <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
-                  <TrendingUp className="h-4 w-4 text-rose-455" /> Weight & Height Tracker
-                </h3>
-                <span className="text-[9px] font-black tracking-widest uppercase bg-rose-950/80 border border-rose-800 text-rose-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(244,63,94,0.25)]">
-                  Dual-Axis Line Chart
-                </span>
-              </div>
+          if (widgetName === "Sleep Cycle Tracker") {
+            return (
+              visibleModules.Workout && (
+                <div key={widgetName} className="col-span-12">
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+                    style={{
+                      height: "320px",
+                      borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <Moon className="h-4 w-4 text-indigo-400" /> Sleep Cycle Tracker
+                      </h3>
+                      <span className="text-[9px] font-black tracking-widest uppercase bg-indigo-950/80 border border-indigo-800 text-indigo-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.25)]">
+                        Weekly Duration
+                      </span>
+                    </div>
 
-              <div className="w-full h-48 mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={telemetryHistory} margin={{ top: 15, right: -5, left: -25, bottom: 0 }}>
-                    <XAxis dataKey="ageLabel" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
-                    <YAxis 
-                      yAxisId="left" 
-                      stroke="#f43f5e" 
-                      fontSize={9} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      domain={['dataMin - 1', 'dataMax + 1']}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right" 
-                      stroke="#3b82f6" 
-                      fontSize={9} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      domain={['dataMin - 1', 'dataMax + 1']}
-                    />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
-                      labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
-                      itemStyle={{ color: "#f8fafc" }}
-                    />
-                    <Line 
-                      yAxisId="left" 
-                      type="monotone" 
-                      dataKey="weight" 
-                      stroke="#f43f5e" 
-                      strokeWidth={2} 
-                      dot={{ r: 3 }} 
-                      activeDot={{ r: 5 }} 
-                      name="Weight (kg)" 
-                    />
-                    <Line 
-                      yAxisId="right" 
-                      type="monotone" 
-                      dataKey="height" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2} 
-                      dot={{ r: 3 }} 
-                      activeDot={{ r: 5 }} 
-                      name="Height (cm)" 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+                    <div className="w-full flex-1 mt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={sleepChartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="sleepGlow" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                            labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                            itemStyle={{ color: "#f8fafc" }}
+                          />
+                          <Area type="monotone" dataKey="hours" stroke="#8b5cf6" fillOpacity={1} fill="url(#sleepGlow)" strokeWidth={2} name="Hours Slept" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )
+            );
+          }
 
-              <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase mt-2 pt-2 border-t border-slate-850/60">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Weight: {weight} kg</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-500" /> Height: {height} cm</span>
-              </div>
-            </div>
-          </div>
-        )}
+          if (widgetName === "Category Spending breakdown") {
+            return (
+              visibleModules.Money && (
+                <div key={widgetName} className="col-span-12 lg:col-span-6">
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+                    style={{
+                      minHeight: "360px",
+                      borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <DollarSign className="h-4 w-4 text-emerald-400" /> Category Spending breakdown
+                      </h3>
+                      <span className="text-[9px] font-black tracking-widest uppercase bg-emerald-950/80 border border-emerald-800 text-emerald-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(16,185,129,0.25)]">
+                        Monthly Expenses
+                      </span>
+                    </div>
+
+                    {pieData.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center py-12 text-slate-500 text-xs italic">
+                        No expense transactions logged for this month.
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-around gap-4 mt-4">
+                        <div className="w-48 h-48 relative shrink-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={pieData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={45}
+                                outerRadius={65}
+                                paddingAngle={5}
+                                dataKey="value"
+                                onMouseEnter={(_, index) => setHoveredCategory(pieData[index]?.name)}
+                                onMouseLeave={() => setHoveredCategory(null)}
+                              >
+                                {pieData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                formatter={(value: any) => [`₹${value}`, "Amount Spent"]}
+                                contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-none">
+                            <span className="text-xs font-bold text-slate-300 mt-0.5 truncate max-w-[100px] text-center" title={hoveredCategory || "Category"}>
+                              {hoveredCategory || "Category"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md max-h-[140px] overflow-y-auto pr-1">
+                          {pieData.map((item, index) => {
+                            const totalSpent = pieData.reduce((sum, d) => sum + d.value, 0);
+                            const percent = totalSpent > 0 ? Math.round((item.value / totalSpent) * 100) : 0;
+                            return (
+                              <div
+                                key={item.name}
+                                className="flex items-center justify-between p-2 rounded-xl border border-slate-850 bg-slate-955/30"
+                              >
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                  <span className="text-[10px] font-bold text-slate-355 truncate">{item.name}</span>
+                                </div>
+                                <div className="text-right ml-2 shrink-0">
+                                  <p className="text-[10px] font-black text-slate-100">₹{item.value}</p>
+                                  <p className="text-[8px] font-bold text-slate-500">{percent}%</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            );
+          }
+
+          if (widgetName === "Weight & Height Tracker") {
+            return (
+              visibleModules.Workout && (
+                <div key={widgetName} className="col-span-12 lg:col-span-6">
+                  <div
+                    className="p-5 bg-slate-900/40 backdrop-blur-md border border-slate-850 rounded-2xl flex flex-col justify-between"
+                    style={{
+                      minHeight: "360px",
+                      borderColor: `color-mix(in srgb, var(--rank-accent) 10%, transparent)`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-850/60 pb-2 mb-2">
+                      <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase flex items-center gap-1.5">
+                        <TrendingUp className="h-4 w-4 text-rose-455" /> Weight & Height Tracker
+                      </h3>
+                      <span className="text-[9px] font-black tracking-widest uppercase bg-rose-950/80 border border-rose-800 text-rose-400 px-2 py-0.5 rounded shadow-[0_0_8px_rgba(244,63,94,0.25)]">
+                        Dual-Axis Line Chart
+                      </span>
+                    </div>
+
+                    <div className="w-full h-48 mt-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={telemetryHistory} margin={{ top: 15, right: -5, left: -25, bottom: 0 }}>
+                          <XAxis dataKey="ageLabel" stroke="#475569" fontSize={9} tickLine={false} axisLine={false} />
+                          <YAxis
+                            yAxisId="left"
+                            stroke="#f43f5e"
+                            fontSize={9}
+                            tickLine={false}
+                            axisLine={false}
+                            domain={['dataMin - 1', 'dataMax + 1']}
+                          />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            stroke="#3b82f6"
+                            fontSize={9}
+                            tickLine={false}
+                            axisLine={false}
+                            domain={['dataMin - 1', 'dataMax + 1']}
+                          />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#020617", borderColor: "#1e293b", borderRadius: "12px", fontSize: "10px" }}
+                            labelStyle={{ color: "#94a3b8", fontWeight: "bold" }}
+                            itemStyle={{ color: "#f8fafc" }}
+                          />
+                          <Line
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey="weight"
+                            stroke="#f43f5e"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            name="Weight (kg)"
+                          />
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="height"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            name="Height (cm)"
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase mt-2 pt-2 border-t border-slate-850/60">
+                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Weight: {weight} kg</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-500" /> Height: {height} cm</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            );
+          }
+
+          return null;
+        })}
       </div>
     </section>
   );

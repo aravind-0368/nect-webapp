@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, FormEvent } from "react";
 import Image from "next/image";
-import { useNectStore } from "../store/useNectStore";
+import { useNectStore, getCurrencySymbol } from "../store/useNectStore";
 import {
   Wallet,
   Plus,
@@ -142,7 +142,7 @@ const colorPalette = [
 ];
 
 export function MoneyModule() {
-  const { autoApproveTransactions } = useNectStore();
+  const { autoApproveTransactions, currency, setCurrency } = useNectStore();
   // --- STATE ---
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [initialBalance, setInitialBalance] = useState<number>(0);
@@ -150,7 +150,6 @@ export function MoneyModule() {
   const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const [recurringRules, setRecurringRules] = useState<RecurringRule[]>(defaultRecurringRules);
   const [processedRecurring, setProcessedRecurring] = useState<string[]>([]);
-  const [currency, setCurrency] = useState<"USD" | "INR">("USD");
 
   // Onboarding Form State
   const [onboardingInput, setOnboardingInput] = useState<string>("");
@@ -235,8 +234,9 @@ export function MoneyModule() {
         if (storedProcessed) loadedProcessed = JSON.parse(storedProcessed);
 
         const storedCurrency = localStorage.getItem("nect_money_currency");
-        if (storedCurrency === "USD" || storedCurrency === "INR") {
+        if (storedCurrency) {
           setCurrency(storedCurrency);
+          localStorage.removeItem("nect_money_currency");
         }
 
         // Auto-approve check on mount
@@ -292,7 +292,7 @@ export function MoneyModule() {
   }, [autoApproveTransactions]);
 
   // --- DYNAMIC CALCULATIONS ---
-  const currencySymbol = currency === "USD" ? "$" : "₹";
+  const currencySymbol = getCurrencySymbol(currency);
 
   const totalEarnings = useMemo(() => {
     return transactions
@@ -644,9 +644,8 @@ export function MoneyModule() {
     }
   };
 
-  const handleCurrencyChange = (newCurrency: "USD" | "INR") => {
+  const handleCurrencyChange = (newCurrency: string) => {
     setCurrency(newCurrency);
-    localStorage.setItem("nect_money_currency", newCurrency);
   };
 
   const handleDeleteLastMonthData = () => {

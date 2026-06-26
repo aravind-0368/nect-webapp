@@ -1,20 +1,22 @@
 "use client";
 
-import { useState, useMemo, FormEvent } from "react";
+import { useState, useMemo, FormEvent, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, Eye, EyeOff, Sliders, LogOut, Lock, AlertTriangle, 
-  GripVertical, User, Settings, AlertCircle, LayoutGrid, Zap 
+  GripVertical, User, Settings, AlertCircle, LayoutGrid, Zap,
+  DollarSign
 } from "lucide-react";
-import { useNectStore, rankTiers, getActiveRank, ModuleKey } from "../store/useNectStore";
+import { useNectStore, rankTiers, getActiveRank, ModuleKey, currenciesList } from "../store/useNectStore";
 
 interface ControlPanelDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onLogout: () => void;
+  dob: string;
 }
 
-export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDrawerProps) {
+export function ControlPanelDrawer({ isOpen, onClose, onLogout, dob }: ControlPanelDrawerProps) {
   const {
     points,
     powerStreak,
@@ -30,7 +32,9 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
     setAutoApproveTransactions,
     toggleModule,
     setWidgetOrder,
-    resetAll
+    resetAll,
+    currency,
+    setCurrency
   } = useNectStore();
 
   const activeRank = useMemo(() => getActiveRank(points), [points]);
@@ -60,11 +64,13 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
   }, [points]);
 
   const isWidgetVisible = (widgetName: string) => {
-    if (widgetName === "Resource Flow Engine") return visibleModules.Money;
-    if (widgetName === "Cognitive Synaptic Gateway") return visibleModules.Learning;
-    if (widgetName === "Skill Matrix Hub") return visibleModules.Learning;
-    if (widgetName === "Kinetic Overdrive Matrix") return visibleModules.Workout;
-    if (widgetName === "Bounty Board Nodes") return visibleModules.Tasks;
+    if (widgetName === "Resource Flow") return visibleModules.Money;
+    if (widgetName === "Workout Chart") return visibleModules.Workout;
+    if (widgetName === "Study Chart") return visibleModules.Learning;
+    if (widgetName === "Task Board") return visibleModules.Tasks;
+    if (widgetName === "Sleep Cycle Tracker") return visibleModules.Workout;
+    if (widgetName === "Category Spending breakdown") return visibleModules.Money;
+    if (widgetName === "Weight & Height Tracker") return visibleModules.Workout;
     return true;
   };
 
@@ -224,6 +230,7 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
                       </p>
                       <h3 className="mt-2 text-2xl font-black text-white">Aravind</h3>
                       <p className="text-xs font-semibold text-slate-450 mt-0.5">aravind@nect.local</p>
+                      <p className="text-xs font-semibold text-slate-450 mt-0.5">DOB: {dob || "Not set"}</p>
                       
                       <div className="mt-5 grid gap-3 grid-cols-2">
                         <div className="rounded-xl border border-slate-850 bg-slate-950/60 p-4 flex items-center justify-between">
@@ -345,6 +352,46 @@ export function ControlPanelDrawer({ isOpen, onClose, onLogout }: ControlPanelDr
                 ) : (
                   /* SETTINGS PANEL */
                   <div className="space-y-6">
+                    {/* Active Currency Selector */}
+                    <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-5">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" style={{ color: accentColor }} /> Active Currency
+                      </h4>
+                      <p className="text-2xs text-slate-500 mt-0.5 mb-4">
+                        Select the base currency symbol used across the finance ledger workspace.
+                      </p>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {currenciesList.map((curr) => {
+                          const isSelected = currency === curr.code;
+                          return (
+                            <button
+                              key={curr.code}
+                              type="button"
+                              onClick={() => setCurrency(curr.code)}
+                              className={`relative flex flex-col items-center justify-center p-3.5 rounded-xl border transition-all duration-300 text-center select-none cursor-pointer ${
+                                isSelected
+                                  ? "bg-slate-900/60 border-slate-700 text-white scale-[1.02]"
+                                  : "bg-slate-950/40 border-slate-850 hover:border-slate-750 text-slate-400 hover:text-slate-200"
+                              }`}
+                              style={{
+                                borderColor: isSelected ? accentColor : undefined,
+                                boxShadow: isSelected ? `0 0 15px ${accentColor}35` : undefined
+                              }}
+                            >
+                              <div className="text-lg mb-1">{curr.flag}</div>
+                              <span className="text-xs font-black uppercase tracking-wider block">
+                                {curr.code} ({curr.symbol})
+                              </span>
+                              <span className="text-[8px] font-medium text-slate-500 mt-0.5 truncate max-w-full">
+                                {curr.name}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     {/* Rank Theme Lock */}
                     <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-5">
                       <h4 className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
