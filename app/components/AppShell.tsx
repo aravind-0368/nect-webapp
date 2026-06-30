@@ -74,55 +74,71 @@ export function AppShell({ onLogout }: AppShellProps) {
     lockRankTheme,
     rankOverride,
     autoApproveTransactions,
-    visibleModules
+    visibleModules,
+    userId,
   } = useNectStore();
 
+  const getWeightKey = () => userId ? `nect_telemetry_weight_${userId}` : "nect_telemetry_weight";
+  const getHeightKey = () => userId ? `nect_telemetry_height_${userId}` : "nect_telemetry_height";
+  const getDobKey = () => userId ? `nect_telemetry_dob_${userId}` : "nect_telemetry_dob";
+  const getAgeKey = () => userId ? `nect_telemetry_age_${userId}` : "nect_telemetry_age";
+  const getSexKey = () => userId ? `nect_telemetry_sex_${userId}` : "nect_telemetry_sex";
+  const getActivityKey = () => userId ? `nect_telemetry_activity_${userId}` : "nect_telemetry_activity";
+  const getProteinKey = () => userId ? `nect_telemetry_protein_factor_${userId}` : "nect_telemetry_protein_factor";
+
   // Lifted states for sharing across modules
-  const [weight, setWeight] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_weight");
-      return saved ? Number(saved) : 75;
-    }
-    return 75;
-  });
-  const [height, setHeight] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_height");
-      return saved ? Number(saved) : 180;
-    }
-    return 180;
-  });
-  const [dob, setDob] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_dob");
-      return saved || "";
-    }
-    return "";
-  });
-  const [age, setAge] = useState(() => {
-    if (typeof window !== "undefined") {
-      const savedDob = localStorage.getItem("nect_telemetry_dob");
-      if (savedDob) {
-        return calculateAge(savedDob);
-      }
-      const saved = localStorage.getItem("nect_telemetry_age");
-      return saved ? Number(saved) : 25;
-    }
-    return 25;
-  });
+  const [weight, setWeight] = useState(75);
+  const [height, setHeight] = useState(180);
+  const [dob, setDob] = useState("");
+  const [age, setAge] = useState(25);
+  const [biologicalSex, setBiologicalSex] = useState<"Men" | "Women">("Men");
+  const [activityMultiplier, setActivityMultiplier] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">("Moderately Active");
+  const [proteinActivityFactor, setProteinActivityFactor] = useState<"Sedentary" | "Active" | "Strength">("Strength");
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("nect_telemetry_dob", dob);
+      const savedWeight = localStorage.getItem(getWeightKey());
+      if (savedWeight) setWeight(Number(savedWeight));
+
+      const savedHeight = localStorage.getItem(getHeightKey());
+      if (savedHeight) setHeight(Number(savedHeight));
+
+      const savedDob = localStorage.getItem(getDobKey());
+      if (savedDob) {
+        setDob(savedDob);
+        setAge(calculateAge(savedDob));
+      } else {
+        const savedAge = localStorage.getItem(getAgeKey());
+        if (savedAge) setAge(Number(savedAge));
+      }
+
+      const savedSex = localStorage.getItem(getSexKey());
+      if (savedSex) setBiologicalSex(savedSex as "Men" | "Women");
+
+      const savedActivity = localStorage.getItem(getActivityKey());
+      if (savedActivity) setActivityMultiplier(savedActivity as any);
+
+      const savedProtein = localStorage.getItem(getProteinKey());
+      if (savedProtein) setProteinActivityFactor(savedProtein as any);
+
+      setIsLoaded(true);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getDobKey(), dob);
     }
     if (dob) {
       const calculated = calculateAge(dob);
       setAge(calculated);
     }
-  }, [dob]);
+  }, [dob, isLoaded]);
 
   useEffect(() => {
-    if (!dob) return;
+    if (!dob || !isLoaded) return;
     const interval = setInterval(() => {
       const currentAge = calculateAge(dob);
       if (currentAge !== age) {
@@ -130,47 +146,32 @@ export function AppShell({ onLogout }: AppShellProps) {
       }
     }, 60000);
     return () => clearInterval(interval);
-  }, [dob, age]);
-  const [biologicalSex, setBiologicalSex] = useState<"Men" | "Women">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_sex");
-      return (saved as "Men" | "Women") || "Men";
-    }
-    return "Men";
-  });
-  const [activityMultiplier, setActivityMultiplier] = useState<"Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_activity");
-      return (saved as "Sedentary" | "Lightly Active" | "Moderately Active" | "Very Active") || "Moderately Active";
-    }
-    return "Moderately Active";
-  });
-  const [proteinActivityFactor, setProteinActivityFactor] = useState<"Sedentary" | "Active" | "Strength">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nect_telemetry_protein_factor");
-      return (saved as "Sedentary" | "Active" | "Strength") || "Strength";
-    }
-    return "Strength";
-  });
+  }, [dob, age, isLoaded]);
 
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_weight", String(weight));
-  }, [weight]);
+    if (!isLoaded) return;
+    localStorage.setItem(getWeightKey(), String(weight));
+  }, [weight, isLoaded]);
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_height", String(height));
-  }, [height]);
+    if (!isLoaded) return;
+    localStorage.setItem(getHeightKey(), String(height));
+  }, [height, isLoaded]);
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_age", String(age));
-  }, [age]);
+    if (!isLoaded) return;
+    localStorage.setItem(getAgeKey(), String(age));
+  }, [age, isLoaded]);
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_sex", biologicalSex);
-  }, [biologicalSex]);
+    if (!isLoaded) return;
+    localStorage.setItem(getSexKey(), biologicalSex);
+  }, [biologicalSex, isLoaded]);
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_activity", activityMultiplier);
-  }, [activityMultiplier]);
+    if (!isLoaded) return;
+    localStorage.setItem(getActivityKey(), activityMultiplier);
+  }, [activityMultiplier, isLoaded]);
   useEffect(() => {
-    localStorage.setItem("nect_telemetry_protein_factor", proteinActivityFactor);
-  }, [proteinActivityFactor]);
+    if (!isLoaded) return;
+    localStorage.setItem(getProteinKey(), proteinActivityFactor);
+  }, [proteinActivityFactor, isLoaded]);
 
   const accentColor = useMemo(() => {
     if (lockRankTheme) {

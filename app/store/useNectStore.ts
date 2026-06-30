@@ -63,6 +63,7 @@ export const defaultWidgets = [
 ];
 
 interface NectState {
+  userId: string | null;
   points: number;
   powerStreak: number;
   smartStreak: number;
@@ -85,6 +86,9 @@ interface NectState {
   rankUpFrom: string;
   rankUpTo: string;
   dismissRankUp: () => void;
+
+  setUserId: (val: string | null) => void;
+  setPoints: (val: number) => void;
 
   // Actions
   awardPoints: (amount: number, sourceModule?: string) => void;
@@ -113,12 +117,13 @@ interface NectState {
 export const useNectStore = create<NectState>()(
   persist(
     (set, get) => ({
-      points: 12840,
-      powerStreak: 5,
-      smartStreak: 7,
-      healthyStreak: 3,
+      userId: null,
+      points: 0,
+      powerStreak: 0,
+      smartStreak: 0,
+      healthyStreak: 0,
       lockRankTheme: true,
-      rankOverride: "S-Rank",
+      rankOverride: "E-Rank",
       autoApproveTransactions: true,
       visibleModules: {
         Dashboard: true,
@@ -136,27 +141,53 @@ export const useNectStore = create<NectState>()(
       lastMainExamScore: null,
       lastMainExamTitle: null,
 
-      prevPoints: 12840,
+      prevPoints: 0,
       showRankUpOverlay: false,
       rankUpFrom: "",
       rankUpTo: "",
 
       dismissRankUp: () => set({ showRankUpOverlay: false }),
+      setUserId: (val) => set({ userId: val }),
+      setPoints: (val) => set({ points: val }),
 
       awardPoints: (amount, sourceModule) => {
         const state = get();
+        const isReversion = amount < 0;
+        const baseAmount = Math.abs(amount);
+
+        // 1. Get streak for the module
+        let streakValue = 0;
+        if (sourceModule === "Workout") {
+          streakValue = state.powerStreak;
+        } else if (sourceModule === "Learning") {
+          streakValue = state.smartStreak;
+        } else if (sourceModule === "Food") {
+          streakValue = state.healthyStreak;
+        } else {
+          streakValue = Math.max(state.powerStreak, state.smartStreak, state.healthyStreak);
+        }
+
+        // 2. Calculate overdrive streak bonus: +10 XP for every 50-day streak
+        const streakBonus = Math.floor(streakValue / 50) * 10;
+
+        // 3. Apply base + bonus and cap it at 40 max ceiling (unless it's 0)
+        let finalXp = baseAmount;
+        if (baseAmount > 0) {
+          finalXp = Math.min(baseAmount + streakBonus, 40);
+        }
+
+        // 4. Apply active boost multiplier (2% boost)
         let multiplier = 1;
-        
         if (sourceModule && state.activeBoosts[sourceModule]) {
           const now = Date.now();
           if (now < state.activeBoosts[sourceModule]) {
-            multiplier = 1.02; // 2% XP multiplier
+            multiplier = 1.02;
           }
         }
 
-        const calculatedAmount = Math.round(amount * multiplier);
+        const calculatedAmount = Math.round(finalXp * multiplier) * (isReversion ? -1 : 1);
         const newPoints = Math.max(0, state.points + calculatedAmount);
-        
+
         const oldRank = getActiveRank(state.points);
         const newRank = getActiveRank(newPoints);
 
@@ -222,14 +253,23 @@ export const useNectStore = create<NectState>()(
         }));
       },
 
-      resetAll: () =>
+      resetAll: () => {
+        if (typeof window !== "undefined") {
+          const keys = Object.keys(localStorage);
+          keys.forEach((key) => {
+            if (key.startsWith("nect_") && key !== "nect-global-store") {
+              localStorage.removeItem(key);
+            }
+          });
+        }
         set({
-          points: 12840,
-          powerStreak: 5,
-          smartStreak: 7,
-          healthyStreak: 3,
+          userId: null,
+          points: 0,
+          powerStreak: 0,
+          smartStreak: 0,
+          healthyStreak: 0,
           lockRankTheme: true,
-          rankOverride: "S-Rank",
+          rankOverride: "E-Rank",
           autoApproveTransactions: true,
           visibleModules: {
             Dashboard: true,
@@ -247,11 +287,13 @@ export const useNectStore = create<NectState>()(
           lastMainExamScore: null,
           lastMainExamTitle: null,
           showRankUpOverlay: false,
-        }),
+        });
+      },
     }),
     {
       name: "nect-global-store",
       partialize: (state) => ({
+        userId: state.userId,
         points: state.points,
         powerStreak: state.powerStreak,
         smartStreak: state.smartStreak,

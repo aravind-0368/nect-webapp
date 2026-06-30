@@ -16,32 +16,7 @@ interface Task {
   category: string;
 }
 
-const defaultTasks: Task[] = [
-  {
-    id: "task-1",
-    title: "Refactor Next.js dashboard routing",
-    priority: "high",
-    completed: false,
-    date: new Date().toISOString().split("T")[0],
-    category: "Coding",
-  },
-  {
-    id: "task-2",
-    title: "Optimize database queries",
-    priority: "medium",
-    completed: true,
-    date: new Date().toISOString().split("T")[0],
-    category: "Database",
-  },
-  {
-    id: "task-3",
-    title: "Update markdown document files",
-    priority: "low",
-    completed: true,
-    date: new Date().toISOString().split("T")[0],
-    category: "Documentation",
-  },
-];
+const defaultTasks: Task[] = [];
 
 const getPriorityPoints = (priority: PriorityLevel): number => {
   switch (priority) {
@@ -63,13 +38,13 @@ export function TaskModule() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("Coding");
-  
+
   // Intake form states
   const [newTitle, setNewTitle] = useState<string>("");
   const [newPriority, setNewPriority] = useState<PriorityLevel>("medium");
   const [newDate, setNewDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [notification, setNotification] = useState<string>("");
-  
+
   // Inline category addition states
   const [isAddingCategory, setIsAddingCategory] = useState<boolean>(false);
   const [newCategoryName, setNewCategoryName] = useState<string>("");
@@ -78,18 +53,21 @@ export function TaskModule() {
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
 
   // Zustand store
-  const { awardPoints } = useNectStore();
+  const { awardPoints, userId } = useNectStore();
+
+  const getTasksKey = () => userId ? `nect_tasks_${userId}` : "nect_tasks";
+  const getCatsKey = () => userId ? `nect_task_categories_${userId}` : "nect_task_categories";
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const storedTasks = localStorage.getItem("nect_tasks");
+      const storedTasks = localStorage.getItem(getTasksKey());
       if (storedTasks) {
         setTasks(JSON.parse(storedTasks));
       } else {
         setTasks(defaultTasks);
       }
 
-      const storedCats = localStorage.getItem("nect_task_categories");
+      const storedCats = localStorage.getItem(getCatsKey());
       if (storedCats) {
         const parsedCats = JSON.parse(storedCats);
         setCategories(parsedCats);
@@ -103,10 +81,10 @@ export function TaskModule() {
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   const saveState = (updatedTasks: Task[]) => {
-    localStorage.setItem("nect_tasks", JSON.stringify(updatedTasks));
+    localStorage.setItem(getTasksKey(), JSON.stringify(updatedTasks));
   };
 
   const showTempNotification = (msg: string) => {
@@ -154,7 +132,7 @@ export function TaskModule() {
     const updatedCats = [...categories, catName];
     setCategories(updatedCats);
     setSelectedCategory(catName);
-    localStorage.setItem("nect_task_categories", JSON.stringify(updatedCats));
+    localStorage.setItem(getCatsKey(), JSON.stringify(updatedCats));
     setIsAddingCategory(false);
     setNewCategoryName("");
     showTempNotification(`Category "${catName}" created!`);
@@ -165,16 +143,16 @@ export function TaskModule() {
       if (task.id === id) {
         const nextCompleted = !task.completed;
         const points = getPriorityPoints(task.priority);
-        
+
         // Award or deduct points from Zustand store
         awardPoints(nextCompleted ? points : -points, "Tasks");
-        
+
         if (nextCompleted) {
-          showTempNotification(`Task complete! Received +${points} XP`);
+          showTempNotification(`Task complete!`);
         } else {
-          showTempNotification(`Task reverted. Deducted ${points} XP`);
+          showTempNotification(`Task reverted.`);
         }
-        
+
         return { ...task, completed: nextCompleted };
       }
       return task;
@@ -189,6 +167,10 @@ export function TaskModule() {
     setTasks(updatedTasks);
     saveState(updatedTasks);
     if (target) {
+      if (target.completed) {
+        const points = getPriorityPoints(target.priority);
+        awardPoints(-points, "Tasks");
+      }
       showTempNotification(`Deleted: "${target.title}"`);
     }
   };
@@ -271,11 +253,10 @@ export function TaskModule() {
         <button
           type="button"
           onClick={() => setIsFormOpen(!isFormOpen)}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 active:scale-95 border cursor-pointer ${
-            isFormOpen 
-              ? "bg-rose-500/10 border-rose-500/30 text-rose-455 hover:bg-rose-500/20" 
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 active:scale-95 border cursor-pointer ${isFormOpen
+              ? "bg-rose-500/10 border-rose-500/30 text-rose-455 hover:bg-rose-500/20"
               : "bg-indigo-650 hover:bg-indigo-600 border-indigo-500/30 text-white shadow-[0_0_15px_rgba(99,102,241,0.25)] animate-pulse"
-          }`}
+            }`}
         >
           <Plus className={`h-4 w-4 transition-transform duration-200 ${isFormOpen ? "rotate-45" : ""}`} />
           <span>{isFormOpen ? "Close Panel" : "Add Task"}</span>
@@ -298,7 +279,7 @@ export function TaskModule() {
 
             <form onSubmit={handleAddTask} className="space-y-5">
               <div className="grid gap-5 md:grid-cols-[1.2fr_0.8fr_1fr_1fr] items-end">
-                
+
                 {/* Task Name Input */}
                 <div className="flex flex-col gap-2">
                   <label htmlFor="taskTitleInput" className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -408,33 +389,30 @@ export function TaskModule() {
                     <button
                       type="button"
                       onClick={() => setNewPriority("low")}
-                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
-                        newPriority === "low"
+                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${newPriority === "low"
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm"
                           : "text-slate-500 hover:text-slate-350"
-                      }`}
+                        }`}
                     >
                       Low
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewPriority("medium")}
-                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
-                        newPriority === "medium"
+                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${newPriority === "medium"
                           ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm"
                           : "text-slate-500 hover:text-slate-350"
-                      }`}
+                        }`}
                     >
                       Med
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewPriority("high")}
-                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
-                        newPriority === "high"
-                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm"
+                      className={`rounded-lg py-2.5 text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${newPriority === "high"
+                          ? "bg-rose-500/10 text-rose-455 border border-rose-500/20 shadow-sm"
                           : "text-slate-500 hover:text-slate-350"
-                      }`}
+                        }`}
                     >
                       High
                     </button>
@@ -475,12 +453,11 @@ export function TaskModule() {
             All tasks completed! Click the Add Task button above to log a new objective.
           </div>
         ) : (
-          <motion.div 
-            layout 
+          <motion.div
+            layout
             className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
           >
             {incompleteTasksSorted.map((task) => {
-              const points = getPriorityPoints(task.priority);
               return (
                 <motion.div
                   key={task.id}
@@ -519,19 +496,19 @@ export function TaskModule() {
                           {task.priority === "high" && (
                             <span className="inline-flex items-center rounded-full bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-rose-400">
                               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                              High (+{points} XP)
+                              High
                             </span>
                           )}
                           {task.priority === "medium" && (
                             <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-400">
                               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                              Medium (+{points} XP)
+                              Medium
                             </span>
                           )}
                           {task.priority === "low" && (
                             <span className="inline-flex items-center rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-400">
                               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                              Low (+{points} XP)
+                              Low
                             </span>
                           )}
                         </div>

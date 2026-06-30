@@ -38,53 +38,7 @@ const days: DayName[] = [
   "Sunday",
 ];
 
-const initialWorkoutItems: WorkoutItem[] = [
-  {
-    id: 1,
-    day: "Monday",
-    bodyPart: "Chest",
-    name: "Incline Dumbbell Press",
-    reps: 12,
-    sets: 4,
-    checkedSets: [false, false, false, false],
-  },
-  {
-    id: 2,
-    day: "Monday",
-    bodyPart: "Chest",
-    name: "Cable Chest Flyes",
-    reps: 15,
-    sets: 3,
-    checkedSets: [false, false, false],
-  },
-  {
-    id: 3,
-    day: "Wednesday",
-    bodyPart: "Legs",
-    name: "Goblet Squat",
-    reps: 10,
-    sets: 4,
-    checkedSets: [false, false, false, false],
-  },
-  {
-    id: 4,
-    day: "Friday",
-    bodyPart: "Back",
-    name: "Lat Pulldown",
-    reps: 12,
-    sets: 4,
-    checkedSets: [false, false, false, false],
-  },
-  {
-    id: 5,
-    day: "Tuesday",
-    bodyPart: "Shoulders",
-    name: "Overhead Dumbbell Press",
-    reps: 10,
-    sets: 4,
-    checkedSets: [false, false, false, false],
-  },
-];
+const initialWorkoutItems: WorkoutItem[] = [];
 
 const dayIndex = new Date().getDay();
 const todayName = days[dayIndex === 0 ? 6 : dayIndex - 1];
@@ -167,14 +121,21 @@ export function ExerciseModule({
     incrementPowerStreak,
     decayPowerStreak,
     awardPoints,
+    userId,
   } = useNectStore();
+
+  const getWorkoutsKey = () => userId ? `nect_workout_items_${userId}` : "nect_workout_items";
+  const getRestKey = () => userId ? `nect_workout_rest_days_${userId}` : "nect_workout_rest_days";
+  const getLogsKey = () => userId ? `nect_workout_sleep_logs_${userId}` : "nect_workout_sleep_logs";
+  const getSportsKey = () => userId ? `nect_workout_sports_list_${userId}` : "nect_workout_sports_list";
+  const getResetWeekKey = () => userId ? `nect_workout_last_reset_week_${userId}` : "nect_workout_last_reset_week";
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const storedWorkouts = localStorage.getItem("nect_workout_items");
-      const storedRest = localStorage.getItem("nect_workout_rest_days");
-      const storedLogs = localStorage.getItem("nect_workout_sleep_logs");
-      const storedSports = localStorage.getItem("nect_workout_sports_list");
+      const storedWorkouts = localStorage.getItem(getWorkoutsKey());
+      const storedRest = localStorage.getItem(getRestKey());
+      const storedLogs = localStorage.getItem(getLogsKey());
+      const storedSports = localStorage.getItem(getSportsKey());
       if (storedWorkouts) {
         let parsed = JSON.parse(storedWorkouts);
         const getStartOfWeek = () => {
@@ -185,7 +146,7 @@ export function ExerciseModule({
           sunday.setHours(0, 0, 0, 0);
           return sunday.getTime();
         };
-        const lastReset = localStorage.getItem("nect_workout_last_reset_week");
+        const lastReset = localStorage.getItem(getResetWeekKey());
         const currentWeekStart = getStartOfWeek();
         if (!lastReset || parseInt(lastReset) < currentWeekStart) {
           parsed = parsed.map((item: any) => ({
@@ -193,10 +154,12 @@ export function ExerciseModule({
             checkedSets: item.checkedSets ? item.checkedSets.map(() => false) : Array.from({ length: item.sets || 3 }, () => false),
             completed: false
           }));
-          localStorage.setItem("nect_workout_items", JSON.stringify(parsed));
-          localStorage.setItem("nect_workout_last_reset_week", currentWeekStart.toString());
+          localStorage.setItem(getWorkoutsKey(), JSON.stringify(parsed));
+          localStorage.setItem(getResetWeekKey(), currentWeekStart.toString());
         }
         setWorkoutItems(parsed);
+      } else {
+        setWorkoutItems(initialWorkoutItems);
       }
       if (storedRest) setRestDays(JSON.parse(storedRest));
       if (storedLogs) {
@@ -216,16 +179,16 @@ export function ExerciseModule({
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_workout_items", JSON.stringify(workoutItems));
+    localStorage.setItem(getWorkoutsKey(), JSON.stringify(workoutItems));
   }, [workoutItems, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_workout_rest_days", JSON.stringify(restDays));
+    localStorage.setItem(getRestKey(), JSON.stringify(restDays));
   }, [restDays, isLoaded]);
 
   const [bodyPart, setBodyPart] = useState("Chest");
@@ -320,7 +283,7 @@ export function ExerciseModule({
     });
 
     setSportsList(updated);
-    localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+    localStorage.setItem(getSportsKey(), JSON.stringify(updated));
   };
 
   const daySummaries = useMemo(
@@ -358,7 +321,31 @@ export function ExerciseModule({
   }
 
   function deleteWorkout(id: number) {
-    setWorkoutItems((current) => current.filter((item) => item.id !== id));
+    let wasChecked = false;
+    let targetDay = "";
+    workoutItems.forEach((item) => {
+      if (item.id === id) {
+        wasChecked = isWorkoutCompleted(item);
+        targetDay = item.day;
+      }
+    });
+
+    setWorkoutItems((current) => {
+      const next = current.filter((item) => item.id !== id);
+
+      const targetDayItems = next.filter((item) => item.day === targetDay);
+      const isStillCompleted = targetDayItems.length > 0 && targetDayItems.every((item) => isWorkoutCompleted(item));
+
+      if (rewardedDays.includes(targetDay as any) && !isStillCompleted) {
+        setRewardedDays((curr) => curr.filter((d) => d !== targetDay));
+        awardPoints(-150, "Workout");
+      }
+      return next;
+    });
+
+    if (wasChecked) {
+      awardPoints(-50, "Workout");
+    }
   }
 
   function toggleRestDay(day: DayName, isRest: boolean) {
@@ -371,7 +358,6 @@ export function ExerciseModule({
   }
 
   function toggleWorkoutCompleted(itemId: number) {
-    let dayCompleted = false;
     let wasChecked = false;
 
     workoutItems.forEach((item) => {
@@ -380,35 +366,39 @@ export function ExerciseModule({
       }
     });
 
-    setWorkoutItems((current) => {
-      const next = current.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
+    const nextWorkoutItems = workoutItems.map((item) => {
+      if (item.id !== itemId) {
+        return item;
+      }
 
-        const isCompletedNow = !isWorkoutCompleted(item);
-        const checkedSets = item.checkedSets ? item.checkedSets.map(() => isCompletedNow) : Array.from({ length: item.sets }, () => isCompletedNow);
+      const isCompletedNow = !isWorkoutCompleted(item);
+      const checkedSets = item.checkedSets ? item.checkedSets.map(() => isCompletedNow) : Array.from({ length: item.sets }, () => isCompletedNow);
 
-        return { ...item, completed: isCompletedNow, checkedSets };
-      });
-
-      dayCompleted =
-        next.filter((item) => item.day === todayName).length > 0 &&
-        next
-          .filter((item) => item.day === todayName)
-          .every((item) => isWorkoutCompleted(item));
-
-      return next;
+      return { ...item, completed: isCompletedNow, checkedSets };
     });
 
-    if (!wasChecked) {
-      awardPoints(50, "Workout"); // Award 50 XP for completing a workout movement
+    const dayCompleted =
+      nextWorkoutItems.filter((item) => item.day === todayName).length > 0 &&
+      nextWorkoutItems
+        .filter((item) => item.day === todayName)
+        .every((item) => isWorkoutCompleted(item));
+
+    setWorkoutItems(nextWorkoutItems);
+
+    if (wasChecked) {
+      awardPoints(-50, "Workout");
+    } else {
+      awardPoints(50, "Workout");
     }
 
-    if (dayCompleted && !rewardedDays.includes(todayName)) {
+    const isNowCompleted = !wasChecked;
+    if (isNowCompleted && dayCompleted && !rewardedDays.includes(todayName)) {
       setRewardedDays((current) => [...current, todayName]);
       incrementPowerStreak();
       awardPoints(150, "Workout"); // +150 XP for completing the workout day
+    } else if (!isNowCompleted && rewardedDays.includes(todayName)) {
+      setRewardedDays((current) => current.filter((d) => d !== todayName));
+      awardPoints(-150, "Workout"); // Deduct workout day reward if uncompleted
     }
   }
 
@@ -512,8 +502,8 @@ export function ExerciseModule({
                 key={view.id}
                 type="button"
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeView === view.id
-                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
-                    : "text-slate-400 hover:text-white"
+                  ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
+                  : "text-slate-400 hover:text-white"
                   }`}
                 onClick={() => setActiveView(view.id)}
               >
@@ -546,7 +536,7 @@ export function ExerciseModule({
               sportsList={sportsList}
               onAddSport={(name, hours, minutes, day, repeatWeekly) => {
                 const dateStr = getWeekdayDateInCurrentWeek(day);
-                
+
                 const newSport = {
                   id: Date.now(),
                   name,
@@ -559,15 +549,15 @@ export function ExerciseModule({
                   dateLogged: dateStr,
                   timestamp: Date.now(),
                 };
-                
+
                 const updated = [...sportsList, newSport];
                 setSportsList(updated);
-                localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+                localStorage.setItem(getSportsKey(), JSON.stringify(updated));
               }}
               onDeleteSport={(id) => {
                 const updated = sportsList.filter((s) => s.id !== id);
                 setSportsList(updated);
-                localStorage.setItem("nect_workout_sports_list", JSON.stringify(updated));
+                localStorage.setItem(getSportsKey(), JSON.stringify(updated));
               }}
             />
           </div>
@@ -629,7 +619,7 @@ export function ExerciseModule({
                 };
                 const updated = [...sleepLogs.filter((log) => log.day !== day), newLog];
                 setSleepLogs(updated);
-                localStorage.setItem("nect_workout_sleep_logs", JSON.stringify(updated));
+                localStorage.setItem(getLogsKey(), JSON.stringify(updated));
               }}
             />
           </div>
@@ -805,7 +795,7 @@ function SleepLoggerSegment({
   const yesterdayIndex = todayIndex === 0 ? 6 : todayIndex - 1;
   const yesterdayName = dayNamesMapping[yesterdayIndex];
   const todayName = dayNamesMapping[todayIndex];
-  
+
   const [sleepTime, setSleepTime] = useState("22:00");
   const [wakeTime, setWakeTime] = useState("06:00");
 
@@ -925,17 +915,16 @@ function TodayWorkoutView({
             </div>
             {todaysSports.map((sport) => {
               const todayDateStr = new Date().toISOString().split("T")[0];
-              const isCompleted = sport.repeatWeekly 
-                ? sport.lastCompletedDate === todayDateStr 
+              const isCompleted = sport.repeatWeekly
+                ? sport.lastCompletedDate === todayDateStr
                 : sport.completed;
               return (
-                <div 
-                  key={sport.id} 
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${
-                    isCompleted 
-                      ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400" 
+                <div
+                  key={sport.id}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${isCompleted
+                      ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400"
                       : "border-slate-800 text-slate-300"
-                  }`}
+                    }`}
                 >
                   <Trophy className={`h-3.5 w-3.5 ${isCompleted ? "text-emerald-405" : "text-indigo-400"}`} />
                   <span>
@@ -945,11 +934,10 @@ function TodayWorkoutView({
                   <button
                     type="button"
                     onClick={() => onToggleSportCompleted(sport.id)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${
-                      isCompleted 
-                        ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" 
+                    className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${isCompleted
+                        ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
                         : "bg-indigo-950/40 border border-indigo-550/30 text-indigo-300 hover:bg-indigo-900/50"
-                    }`}
+                      }`}
                   >
                     {isCompleted ? "Completed" : "Mark Done"}
                   </button>
@@ -983,17 +971,16 @@ function TodayWorkoutView({
           </div>
           {todaysSports.map((sport) => {
             const todayDateStr = new Date().toISOString().split("T")[0];
-            const isCompleted = sport.repeatWeekly 
-              ? sport.lastCompletedDate === todayDateStr 
+            const isCompleted = sport.repeatWeekly
+              ? sport.lastCompletedDate === todayDateStr
               : sport.completed;
             return (
-              <div 
-                key={sport.id} 
-                className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${
-                  isCompleted 
-                    ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400" 
+              <div
+                key={sport.id}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all duration-300 bg-slate-950/40 ${isCompleted
+                    ? "border-emerald-500/35 bg-emerald-500/5 text-emerald-400"
                     : "border-slate-800 text-slate-300"
-                }`}
+                  }`}
               >
                 <Trophy className={`h-3.5 w-3.5 ${isCompleted ? "text-emerald-405" : "text-indigo-400"}`} />
                 <span>
@@ -1003,11 +990,10 @@ function TodayWorkoutView({
                 <button
                   type="button"
                   onClick={() => onToggleSportCompleted(sport.id)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${
-                    isCompleted 
-                      ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" 
+                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all duration-150 active:scale-95 ${isCompleted
+                      ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
                       : "bg-indigo-950/40 border border-indigo-550/30 text-indigo-300 hover:bg-indigo-900/50"
-                  }`}
+                    }`}
                 >
                   {isCompleted ? "Completed" : "Mark Done"}
                 </button>
@@ -1070,8 +1056,8 @@ function TodayWorkoutView({
                       transition={{ duration: 0.2 }}
                       onClick={() => onToggleWorkoutCompleted(item.id)}
                       className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-black uppercase tracking-[0.1em] transition-all duration-200 active:scale-95 border ${isComplete
-                          ? "border-emerald-500/35 bg-emerald-500/20 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)] text-[10px]"
-                          : "border-red-500/20 bg-red-500/10 text-red-400 hover:border-red-500/40 hover:bg-red-500/20 text-[9px]"
+                        ? "border-emerald-500/35 bg-emerald-500/20 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)] text-[10px]"
+                        : "border-red-500/20 bg-red-500/10 text-red-400 hover:border-red-500/40 hover:bg-red-500/20 text-[9px]"
                         }`}
                     >
                       <Check className={`h-3 w-3 ${isComplete ? "text-emerald-400" : "text-red-400"}`} />
@@ -1135,8 +1121,8 @@ function WeeklyPlanView({
               key={day}
               type="button"
               className={`py-3 px-2 rounded-2xl border text-center transition-all duration-100 active:scale-95 ${selectedDay === day
-                  ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/12 shadow-[0_0_12px_var(--rank-accent)]"
-                  : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/12 shadow-[0_0_12px_var(--rank-accent)]"
+                : "border-slate-800 bg-slate-950 hover:border-slate-600"
                 }`}
               onClick={() => onSetSelectedDay(day)}
             >
@@ -1183,8 +1169,8 @@ function WeeklyPlanView({
                     type="button"
                     onClick={() => onSetBodyPart(part)}
                     className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${isSelected
-                        ? "bg-indigo-950/50 border-indigo-500 text-indigo-200"
-                        : "bg-slate-900/60 border-slate-800 text-slate-450 hover:border-slate-700 hover:text-slate-200"
+                      ? "bg-indigo-950/50 border-indigo-500 text-indigo-200"
+                      : "bg-slate-900/60 border-slate-800 text-slate-450 hover:border-slate-700 hover:text-slate-200"
                       }`}
                   >
                     <img
@@ -1374,7 +1360,7 @@ function getWeekdayDateInCurrentWeek(targetDay: DayName): string {
   const today = new Date();
   const currentDayIndex = today.getDay(); // 0 (Sun) to 6 (Sat)
   const targetDayIndex = dayNamesMapping.indexOf(targetDay);
-  
+
   const diffDays = targetDayIndex - currentDayIndex;
   const targetDate = new Date(today);
   targetDate.setDate(today.getDate() + diffDays);
@@ -1393,7 +1379,7 @@ function SportsView({
   const [sportName, setSportName] = useState("");
   const [hours, setHours] = useState(1);
   const [minutes, setMinutes] = useState(0);
-  
+
   const dayNamesMapping: DayName[] = [
     "Sunday",
     "Monday",
@@ -1403,12 +1389,12 @@ function SportsView({
     "Friday",
     "Saturday",
   ];
-  
+
   const [selectedDay, setSelectedDay] = useState<DayName>(() => {
     const dayIndex = new Date().getDay();
     return dayNamesMapping[dayIndex];
   });
-  
+
   const [repeatWeekly, setRepeatWeekly] = useState(true);
 
   const daysOfWeek: DayName[] = [

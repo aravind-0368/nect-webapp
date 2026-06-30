@@ -30,28 +30,7 @@ type SearchResult = {
   fiberPer100g: number;
 };
 
-const initialPlateItems: PlateItem[] = [
-  {
-    id: 1,
-    name: "Rolled Oats",
-    servingUnit: "Bowls",
-    quantity: 1.5,
-    calories: 150,
-    protein: 5,
-    fiber: 4,
-    checked: true,
-  },
-  {
-    id: 2,
-    name: "Banana",
-    servingUnit: "Whole Fruit",
-    quantity: 1,
-    calories: 105,
-    protein: 1.3,
-    fiber: 3,
-    checked: false,
-  },
-];
+const initialPlateItems: PlateItem[] = [];
 
 const fieldClass =
   "rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500";
@@ -97,30 +76,43 @@ export function FoodModule({
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedSearchFoodId, setSelectedSearchFoodId] = useState<string | null>(null);
   const [searchGrams, setSearchGrams] = useState<number>(100);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setHasSearched(false);
+      setSearchResults([]);
+    }
+  }, [searchQuery]);
 
   // Zustand state
   const {
     healthyStreak,
     incrementHealthyStreak,
-    decayHealthyStreak,
     awardPoints,
+    userId,
   } = useNectStore();
+
+  const getPlateKey = () => userId ? `nect_food_plate_items_${userId}` : "nect_food_plate_items";
+  const getWaterKey = () => userId ? `nect_food_water_${userId}` : "nect_food_water";
+  const getCompletedKey = () => userId ? `nect_food_day_completed_${userId}` : "nect_food_day_completed";
+  const getLastDateKey = () => userId ? `nect_food_last_date_${userId}` : "nect_food_last_date";
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const todayStr = new Date().toISOString().split("T")[0];
-      const lastDate = localStorage.getItem("nect_food_last_date");
+      const lastDate = localStorage.getItem(getLastDateKey());
 
       let loadedPlate = initialPlateItems;
-      const storedPlate = localStorage.getItem("nect_food_plate_items");
+      const storedPlate = localStorage.getItem(getPlateKey());
       if (storedPlate) loadedPlate = JSON.parse(storedPlate);
 
       let loadedWater = 0;
-      const storedWater = localStorage.getItem("nect_food_water");
+      const storedWater = localStorage.getItem(getWaterKey());
       if (storedWater) loadedWater = Number(storedWater);
 
       let loadedCompleted = false;
-      const storedCompleted = localStorage.getItem("nect_food_day_completed");
+      const storedCompleted = localStorage.getItem(getCompletedKey());
       if (storedCompleted) loadedCompleted = JSON.parse(storedCompleted);
 
       if (lastDate !== todayStr) {
@@ -128,10 +120,10 @@ export function FoodModule({
         loadedPlate = [];
         loadedWater = 0;
         loadedCompleted = false;
-        localStorage.setItem("nect_food_last_date", todayStr);
-        localStorage.setItem("nect_food_plate_items", JSON.stringify([]));
-        localStorage.setItem("nect_food_water", "0");
-        localStorage.setItem("nect_food_day_completed", "false");
+        localStorage.setItem(getLastDateKey(), todayStr);
+        localStorage.setItem(getPlateKey(), JSON.stringify([]));
+        localStorage.setItem(getWaterKey(), "0");
+        localStorage.setItem(getCompletedKey(), "false");
       }
 
       setPlateItems(loadedPlate);
@@ -140,21 +132,21 @@ export function FoodModule({
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_plate_items", JSON.stringify(plateItems));
+    localStorage.setItem(getPlateKey(), JSON.stringify(plateItems));
   }, [plateItems, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_water", String(water));
+    localStorage.setItem(getWaterKey(), String(water));
   }, [water, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_day_completed", JSON.stringify(dayCompleted));
+    localStorage.setItem(getCompletedKey(), JSON.stringify(dayCompleted));
   }, [dayCompleted, isLoaded]);
 
   // Internal fallbacks for telemetry if workout module is disabled
@@ -221,6 +213,13 @@ export function FoodModule({
   const isWaterGoalMet = water >= (biologicalSex === "Men" ? 3.0 : 2.2);
   const allTargetsMet = totals.calories >= caloriesTarget && totals.protein >= proteinTarget && totals.fiber >= fiberTarget;
 
+  function showTempNotification(msg: string) {
+    setNotification(msg);
+    setTimeout(() => {
+      setNotification((curr) => (curr === msg ? "" : curr));
+    }, 3000);
+  }
+
   function handleTogglePlateItem(id: number) {
     let wasChecked = false;
     plateItems.forEach((item) => {
@@ -231,14 +230,14 @@ export function FoodModule({
       current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     );
 
-    // Award +10 XP for checking off meals eaten
-    if (!wasChecked) {
-      awardPoints(10, "Food");
-    }
+    // Award +10 XP for checking off meals eaten, deduct -10 XP if unchecked
+    awardPoints(wasChecked ? -10 : 10, "Food");
   }
 
   function handleDeletePlateItem(id: number) {
     setPlateItems((current) => current.filter((item) => item.id !== id));
+    // Deduct logging reward (+15 XP)
+    awardPoints(-15, "Food");
   }
 
   function handleCompleteNutritionDay() {
@@ -246,10 +245,8 @@ export function FoodModule({
     setDayCompleted(true);
     incrementHealthyStreak();
     awardPoints(150, "Food");
-    setNotification("Complete Nutrition Day recorded! Streak advanced & +150 XP awarded.");
+    showTempNotification("Complete Nutrition Day recorded!");
   }
-
-
 
   async function handleSearchFood() {
     if (!searchQuery.trim()) return;
@@ -257,27 +254,78 @@ export function FoodModule({
     setSelectedSearchFoodId(null);
     try {
       const res = await fetch(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
-          searchQuery,
-        )}&search_simple=1&action=process&json=1&page_size=5`,
+        `/api/food/search?query=${encodeURIComponent(searchQuery)}`
       );
       const data = await res.json();
       if (data.products && Array.isArray(data.products)) {
-        const mapped = data.products.map((product: any) => ({
-          id: product._id || String(Math.random()),
-          name: product.product_name || "Unknown Product",
-          brand: product.brands || "Generic",
-          caloriesPer100g: Math.round(product.nutriments?.["energy-kcal_100g"] || 0),
-          proteinPer100g: Number(product.nutriments?.proteins_100g) || 0,
-          fiberPer100g: Number(product.nutriments?.fiber_100g) || 0,
-        }));
+        const mapped = data.products.map((product: any) => {
+          const nutriments = product.nutriments || {};
+          
+          // Kcal parsing with robust fallbacks
+          let kcal = 0;
+          if (nutriments["energy-kcal_100g"] !== undefined) {
+            kcal = Number(nutriments["energy-kcal_100g"]);
+          } else if (nutriments["energy-kcal"] !== undefined) {
+            kcal = Number(nutriments["energy-kcal"]);
+          } else if (nutriments["energy-kcal_value"] !== undefined) {
+            kcal = Number(nutriments["energy-kcal_value"]);
+          } else if (nutriments["energy_100g"] !== undefined) {
+            const unit = String(nutriments["energy_unit"] || "").toLowerCase();
+            if (unit === "kj" || unit === "joules" || unit === "j") {
+              kcal = Number(nutriments["energy_100g"]) / 4.184;
+            } else {
+              kcal = Number(nutriments["energy_100g"]);
+            }
+          } else if (nutriments["energy_value"] !== undefined) {
+            const unit = String(nutriments["energy_unit"] || "").toLowerCase();
+            if (unit === "kj" || unit === "joules" || unit === "j") {
+              kcal = Number(nutriments["energy_value"]) / 4.184;
+            } else {
+              kcal = Number(nutriments["energy_value"]);
+            }
+          }
+          
+          // Protein parsing with robust fallbacks
+          let proteins = 0;
+          if (nutriments.proteins_100g !== undefined) {
+            proteins = Number(nutriments.proteins_100g);
+          } else if (nutriments.proteins !== undefined) {
+            proteins = Number(nutriments.proteins);
+          } else if (nutriments.proteins_value !== undefined) {
+            proteins = Number(nutriments.proteins_value);
+          }
+
+          // Fiber parsing with robust fallbacks
+          let fiber = 0;
+          if (nutriments.fiber_100g !== undefined) {
+            fiber = Number(nutriments.fiber_100g);
+          } else if (nutriments.fiber !== undefined) {
+            fiber = Number(nutriments.fiber);
+          } else if (nutriments.fiber_value !== undefined) {
+            fiber = Number(nutriments.fiber_value);
+          }
+
+          const productName = product.product_name || product.product_name_en || product.product_name_fr || product.generic_name || product.generic_name_en || "Unknown Product";
+          const productBrand = product.brands || product.brand_owner || (product.brands_tags && product.brands_tags.join(", ")) || "Generic";
+
+          return {
+            id: product._id || String(Math.random()),
+            name: productName,
+            brand: productBrand,
+            caloriesPer100g: Math.round(kcal),
+            proteinPer100g: proteins,
+            fiberPer100g: fiber,
+          };
+        });
         setSearchResults(mapped);
       } else {
         setSearchResults([]);
       }
+      setHasSearched(true);
     } catch (err) {
       console.error(err);
-      setNotification("Failed to connect to Open Food Facts API.");
+      setHasSearched(true);
+      showTempNotification("Failed to connect to Open Food Facts API.");
     } finally {
       setSearchLoading(false);
     }
@@ -317,6 +365,11 @@ export function FoodModule({
               </span>
             </div>
           </div>
+          {notification && (
+            <span className="rounded-full border border-[var(--rank-accent)]/25 bg-[var(--rank-accent)]/10 px-4 py-2 text-xs font-semibold text-[var(--rank-accent)] animate-pulse">
+              {notification}
+            </span>
+          )}
         </div>
 
         {/* Dynamic Telemetry / Status Row */}
@@ -390,12 +443,12 @@ export function FoodModule({
             <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-6 flex flex-col justify-between min-h-[300px]">
               <div>
                 <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 mb-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-955">
                     <PlusCircle className="h-5 w-5" style={{ color: "var(--rank-accent)" }} />
                   </div>
                   <div>
                     <h3 className="font-bold text-white">Log Today&apos;s Intake</h3>
-                    <p className="text-xs text-slate-405">Select and log food item</p>
+                    <p className="text-xs text-slate-400">Select and log food item</p>
                   </div>
                 </div>
 
@@ -425,9 +478,19 @@ export function FoodModule({
                   {/* Search Results */}
                   <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                     {searchResults.length === 0 ? (
-                      <p className="text-xs text-slate-500 italic text-center py-4">
-                        {searchLoading ? "Fetching live nutriment data..." : "Enter query to search live database."}
-                      </p>
+                      <div className="text-xs text-slate-500 italic text-center py-4">
+                        {searchLoading ? (
+                          "Fetching live nutriment data..."
+                        ) : hasSearched ? (
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <span className="inline-flex items-center rounded-md bg-rose-500/10 border border-rose-500/30 px-2.5 py-1 text-xs font-bold text-rose-400">
+                              Not found
+                            </span>
+                          </div>
+                        ) : (
+                          "Enter query to search live database."
+                        )}
+                      </div>
                     ) : (
                       searchResults.map((food) => (
                         <div
@@ -437,7 +500,7 @@ export function FoodModule({
                           <div className="flex justify-between items-start gap-2">
                             <div>
                               <h4 className="font-bold text-white text-xs">{food.name}</h4>
-                              <p className="text-[10px] text-slate-550">{food.brand}</p>
+                              <p className="text-[10px] text-slate-500">{food.brand}</p>
                             </div>
                             <span className="text-[10px] font-mono text-[var(--rank-accent)] font-bold">100g base</span>
                           </div>
@@ -458,7 +521,7 @@ export function FoodModule({
                                     type="number"
                                     value={searchGrams}
                                     onChange={(e) => setSearchGrams(Math.max(1, Number(e.target.value) || 0))}
-                                    className="w-16 rounded bg-slate-950 px-2 py-1 text-center text-xs font-bold text-white border border-slate-800 focus:border-emerald-500 outline-none"
+                                    className="w-16 rounded bg-slate-955 px-2 py-1 text-center text-xs font-bold text-white border border-slate-850 focus:border-emerald-500 outline-none"
                                     placeholder="g"
                                     min={1}
                                   />
@@ -503,8 +566,8 @@ export function FoodModule({
             {/* Minimalist Water Intake Engine (RIGHT SIDE) */}
             <div
               className={`relative rounded-2xl border p-6 transition-all duration-300 ${isWaterGoalMet
-                  ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
-                  : "border-slate-800 bg-slate-950/35"
+                ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
+                : "border-slate-800 bg-slate-950/35"
                 }`}
             >
               {isWaterGoalMet && (
@@ -519,7 +582,7 @@ export function FoodModule({
                 </div>
                 <div>
                   <h3 className="font-bold text-white">Water Intake</h3>
-                  <p className="text-xs text-slate-405">
+                  <p className="text-xs text-slate-400">
                     Target: {biologicalSex === "Men" ? "3.0" : "2.2"} Liters ({biologicalSex === "Men" ? "12" : "9"} cups)
                   </p>
                 </div>
@@ -540,17 +603,35 @@ export function FoodModule({
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => setWater((prev) => prev + 0.25)}
+                    onClick={() => {
+                      const nextWater = water + 0.25;
+                      const oldLiters = Math.floor(water);
+                      const newLiters = Math.floor(nextWater);
+                      if (newLiters > oldLiters && newLiters <= 4) {
+                        awardPoints(5, "Food");
+                        showTempNotification("+5 XP: Water Milestone Reached!");
+                      }
+                      setWater(nextWater);
+                    }}
                     className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition-all duration-105 hover:bg-blue-500 active:scale-95 cursor-pointer w-full shadow-[0_0_15px_rgba(59,130,246,0.2)]"
                   >
                     <Plus className="h-4 w-4" />
                     <span>Add 1 Cup of water</span>
                   </button>
-                  
+
                   {water > 0 && (
                     <button
                       type="button"
-                      onClick={() => setWater((prev) => Math.max(0, prev - 0.25))}
+                      onClick={() => {
+                        const nextWater = Math.max(0, water - 0.25);
+                        const oldLiters = Math.floor(water);
+                        const newLiters = Math.floor(nextWater);
+                        if (oldLiters > newLiters && oldLiters <= 4) {
+                          awardPoints(-5, "Food");
+                          showTempNotification("-5 XP: Water Milestone Reverted.");
+                        }
+                        setWater(nextWater);
+                      }}
                       className="text-slate-500 hover:text-slate-350 text-[10px] uppercase font-bold tracking-wider py-1 cursor-pointer transition-colors"
                     >
                       Remove 1 Cup
@@ -603,11 +684,10 @@ export function FoodModule({
                   <button
                     type="button"
                     disabled={dayCompleted}
-                    className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${
-                      dayCompleted
+                    className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${dayCompleted
                         ? "bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none"
                         : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"
-                    }`}
+                      }`}
                     onClick={handleCompleteNutritionDay}
                   >
                     {dayCompleted ? "✓ Day Recorded" : "Complete Nutrition Day"}
@@ -624,7 +704,7 @@ export function FoodModule({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left">
                   <thead>
-                    <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-505">
+                    <tr className="border-b border-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
                       <th className="py-3 px-4">Food Item</th>
                       <th className="py-3 px-4">Quantity / Serving</th>
                       <th className="py-3 px-4">Calories</th>
@@ -642,7 +722,7 @@ export function FoodModule({
                       return (
                         <tr
                           key={item.id}
-                          className="transition-all duration-300 hover:bg-slate-950/15"
+                          className="transition-all duration-300 hover:bg-slate-955/15"
                         >
                           <td className="py-3 px-4 font-bold text-slate-200">
                             <span>
@@ -686,9 +766,9 @@ export function FoodModule({
                 </table>
               </div>
             )}
-            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
   );
 }

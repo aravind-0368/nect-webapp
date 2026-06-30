@@ -48,7 +48,7 @@ export function PowerUpBoost({ moduleKey, children }: PowerUpBoostProps) {
   return (
     <div className="relative group/boost cursor-pointer select-none">
       {/* Wrapped category icon children */}
-      <div 
+      <div
         className="transition-all duration-300"
         style={{
           filter: isActive ? "drop-shadow(0 0 8px var(--rank-accent))" : "none",
@@ -81,10 +81,10 @@ export function PowerUpBoost({ moduleKey, children }: PowerUpBoostProps) {
           <span className="text-[7px] font-bold text-emerald-400 tracking-widest uppercase">
             +2% XP
           </span>
-          
+
           {/* Decaying linear progress bar overlay at the base of the icon */}
           <div className="absolute bottom-0 left-0 h-1 bg-[var(--rank-accent)]/30 w-full">
-            <div 
+            <div
               className="h-full bg-[var(--rank-accent)] shadow-[0_0_8px_var(--rank-accent)] transition-all duration-100 ease-linear"
               style={{ width: `${pctLeft}%` }}
             />

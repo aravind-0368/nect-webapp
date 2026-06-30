@@ -53,21 +53,9 @@ const daysOfWeek: DayName[] = [
   "Sunday",
 ];
 
-const initialSessions: StudySession[] = [
-  { id: 1, subject: "Data Structures", hours: 2, minutes: 30, day: "Monday" },
-  { id: 2, subject: "Advanced Algorithms", hours: 3, minutes: 15, day: "Tuesday" },
-  { id: 3, subject: "Discrete Mathematics", hours: 1, minutes: 45, day: "Wednesday" },
-  { id: 4, subject: "Operating Systems", hours: 2, minutes: 0, day: "Thursday" },
-  { id: 5, subject: "Systems Architecture", hours: 4, minutes: 30, day: "Friday" },
-  { id: 6, subject: "AI Engineering", hours: 5, minutes: 0, day: "Saturday" },
-];
+const initialSessions: StudySession[] = [];
 
-const initialRevisions: RevisionSubject[] = [
-  { id: 1, name: "Data Structures", checked: false },
-  { id: 2, name: "Advanced Algorithms", checked: false },
-  { id: 3, name: "Operating Systems", checked: false },
-  { id: 4, name: "Systems Architecture", checked: false },
-];
+const initialRevisions: RevisionSubject[] = [];
 
 const getFutureDateString = (daysOffset: number) => {
   const d = new Date();
@@ -75,13 +63,7 @@ const getFutureDateString = (daysOffset: number) => {
   return d.toISOString().split("T")[0];
 };
 
-const initialExams: ExamRecord[] = [
-  { id: 1, title: "Data Structures Quiz", isMain: false, totalMarks: 50, gainedMarks: 40, marksLogged: true },
-  { id: 2, title: "Algorithms Midterm", isMain: true, totalMarks: 100, gainedMarks: 85, date: getFutureDateString(-15), marksLogged: true },
-  { id: 3, title: "Discrete Math Test", isMain: false, totalMarks: 20, gainedMarks: 12, marksLogged: true },
-  { id: 4, title: "Systems Midterm", isMain: true, totalMarks: 100, gainedMarks: 92, date: getFutureDateString(-5), marksLogged: true },
-  { id: 5, title: "AI Engineering Final", isMain: true, totalMarks: 100, gainedMarks: 0, date: getFutureDateString(4) },
-];
+const initialExams: ExamRecord[] = [];
 
 const fieldClass =
   "rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500";
@@ -99,7 +81,13 @@ export function LearningModule() {
     decaySmartStreak,
     awardPoints,
     triggerPeakMentalPower,
+    userId,
   } = useNectStore();
+
+  const getSessionsKey = () => userId ? `nect_learning_sessions_${userId}` : "nect_learning_sessions";
+  const getRevisionsKey = () => userId ? `nect_learning_revisions_${userId}` : "nect_learning_revisions";
+  const getExamsKey = () => userId ? `nect_learning_exams_${userId}` : "nect_learning_exams";
+  const getLastDateKey = () => userId ? `nect_learning_last_date_${userId}` : "nect_learning_last_date";
 
   const [notification, setNotification] = useState("");
   const [showSplash, setShowSplash] = useState(false);
@@ -108,47 +96,47 @@ export function LearningModule() {
   useEffect(() => {
     const timer = setTimeout(() => {
       const todayStr = new Date().toISOString().split("T")[0];
-      const lastDate = localStorage.getItem("nect_learning_last_date");
+      const lastDate = localStorage.getItem(getLastDateKey());
 
       let loadedSessions = initialSessions;
-      const storedSessions = localStorage.getItem("nect_learning_sessions");
+      const storedSessions = localStorage.getItem(getSessionsKey());
       if (storedSessions) loadedSessions = JSON.parse(storedSessions);
 
       let loadedRevisions = initialRevisions;
-      const storedRevisions = localStorage.getItem("nect_learning_revisions");
+      const storedRevisions = localStorage.getItem(getRevisionsKey());
       if (storedRevisions) loadedRevisions = JSON.parse(storedRevisions);
 
       if (lastDate !== todayStr) {
         loadedSessions = [];
         loadedRevisions = loadedRevisions.map((r: any) => ({ ...r, checked: false }));
-        localStorage.setItem("nect_learning_last_date", todayStr);
-        localStorage.setItem("nect_learning_sessions", JSON.stringify([]));
-        localStorage.setItem("nect_learning_revisions", JSON.stringify(loadedRevisions));
+        localStorage.setItem(getLastDateKey(), todayStr);
+        localStorage.setItem(getSessionsKey(), JSON.stringify([]));
+        localStorage.setItem(getRevisionsKey(), JSON.stringify(loadedRevisions));
       }
 
       setSessions(loadedSessions);
       setRevisions(loadedRevisions);
 
-      const storedExams = localStorage.getItem("nect_learning_exams");
+      const storedExams = localStorage.getItem(getExamsKey());
       if (storedExams) setExams(JSON.parse(storedExams));
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_learning_sessions", JSON.stringify(sessions));
+    localStorage.setItem(getSessionsKey(), JSON.stringify(sessions));
   }, [sessions, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_learning_revisions", JSON.stringify(revisions));
+    localStorage.setItem(getRevisionsKey(), JSON.stringify(revisions));
   }, [revisions, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_learning_exams", JSON.stringify(exams));
+    localStorage.setItem(getExamsKey(), JSON.stringify(exams));
   }, [exams, isLoaded]);
 
   // Form states - Study Logger
@@ -224,18 +212,18 @@ export function LearningModule() {
     if (!nearestMainExam || nearestMainExam.isOver) return "";
     const diff = nearestMainExam.targetTime - Date.now();
     if (diff <= 0) return "0d 0h 0m 0s";
-    
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hrs = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const secs = Math.floor((diff % (1000 * 60)) / 1000);
-    
+
     return `${days}d ${hrs}h ${mins}m ${secs}s`;
   }, [nearestMainExam, tick]);
 
   const handleSaveInlineExam = () => {
     if (!inlineTitle.trim() || !inlineDate) return;
-    
+
     if (nearestMainExam) {
       setExams((prev) =>
         prev.map((e) =>
@@ -264,11 +252,11 @@ export function LearningModule() {
       prev.map((e) =>
         e.id === id
           ? {
-              ...e,
-              totalMarks: overTotalMarks,
-              gainedMarks: overGainedMarks,
-              marksLogged: true,
-            }
+            ...e,
+            totalMarks: overTotalMarks,
+            gainedMarks: overGainedMarks,
+            marksLogged: true,
+          }
           : e
       )
     );
@@ -360,6 +348,7 @@ export function LearningModule() {
 
   function handleDeleteSession(id: number) {
     setSessions((curr) => curr.filter((s) => s.id !== id));
+    awardPoints(-40, "Learning");
   }
 
   // Handlers - Revision Vault
@@ -388,14 +377,19 @@ export function LearningModule() {
       curr.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)),
     );
 
-    // Award a minor +10 XP for checking off a revision subject
-    if (!wasChecked) {
-      awardPoints(10, "Learning");
-    }
+    // Award +10 XP for checking off a revision subject, deduct -10 XP if unchecked
+    awardPoints(wasChecked ? -10 : 10, "Learning");
   }
 
   function handleDeleteRevision(id: number) {
+    let wasChecked = false;
+    revisions.forEach((r) => {
+      if (r.id === id) wasChecked = r.checked;
+    });
     setRevisions((curr) => curr.filter((r) => r.id !== id));
+    if (wasChecked) {
+      awardPoints(-10, "Learning");
+    }
   }
 
   function handleCompleteRevisionCycle() {
@@ -626,11 +620,10 @@ export function LearningModule() {
         </div>
 
         {/* Right header widget: High-Stakes Telemetry Countdown Tag */}
-        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-center min-h-[190px] transition-all duration-500 ${
-          isNearExam
+        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-center min-h-[190px] transition-all duration-500 ${isNearExam
             ? "border-rose-500 bg-rose-955/20 shadow-[0_0_25px_rgba(244,63,94,0.25)]"
             : "border-slate-800/80 bg-slate-900/40"
-        }`}>
+          }`}>
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
               High-Stakes Telemetry
@@ -770,18 +763,16 @@ export function LearningModule() {
                 </div>
               ) : (
                 <div
-                  className={`rounded-xl border p-4 transition-all duration-355 ${
-                    isNearExam
+                  className={`rounded-xl border p-4 transition-all duration-355 ${isNearExam
                       ? "border-rose-500/40 bg-rose-500/10 text-rose-205 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
                       : "border-indigo-500/25 bg-indigo-500/10 text-indigo-300"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded flex items-center gap-1.5 ${
-                      isNearExam
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded flex items-center gap-1.5 ${isNearExam
                         ? "bg-rose-550/20 text-rose-300 border border-rose-500/30"
                         : "bg-indigo-550/20 text-indigo-300 border border-indigo-500/30"
-                    }`}>
+                      }`}>
                       {isNearExam ? (
                         <>
                           <span className="relative flex h-1.5 w-1.5">
@@ -833,8 +824,8 @@ export function LearningModule() {
                 key={tab.id}
                 type="button"
                 className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] transition-all duration-100 active:scale-95 ${activeTab === tab.id
-                    ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
-                    : "text-slate-400 hover:text-white"
+                  ? "bg-[var(--rank-accent)]/15 text-white shadow-[var(--rank-accent-glow-subtle)]"
+                  : "text-slate-400 hover:text-white"
                   }`}
                 onClick={() => setActiveTab(tab.id)}
               >
@@ -1054,8 +1045,8 @@ export function LearningModule() {
                       animate={rev.checked ? { scale: [1, 1.05, 1] } : {}}
                       transition={{ duration: 0.2 }}
                       className={`relative rounded-xl border p-4 transition-all duration-300 ${rev.checked
-                          ? "border-emerald-500/30 bg-emerald-950/5 opacity-55 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
-                          : "border-slate-800 bg-slate-900/40 hover:border-slate-705"
+                        ? "border-emerald-500/30 bg-emerald-950/5 opacity-55 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        : "border-slate-800 bg-slate-900/40 hover:border-slate-705"
                         }`}
                     >
                       <div className="flex items-center gap-3">
@@ -1264,18 +1255,18 @@ export function LearningModule() {
                       <div
                         key={e.id}
                         className={`rounded-xl border p-4 flex items-center justify-between transition-all duration-300 ${e.isMain
-                            ? isUpcomingMain
-                              ? "border-purple-500 bg-purple-950/25 shadow-[0_0_15px_rgba(168,85,247,0.22)] animate-pulse"
-                              : "border-purple-500/30 bg-purple-950/5 hover:border-purple-500/50 hover:shadow-[0_0_15px_rgba(168,85,247,0.06)]"
-                            : "border-amber-500/25 bg-amber-950/5 hover:border-amber-500/45 hover:shadow-[0_0_15px_rgba(245,158,11,0.06)]"
+                          ? isUpcomingMain
+                            ? "border-purple-500 bg-purple-950/25 shadow-[0_0_15px_rgba(168,85,247,0.22)] animate-pulse"
+                            : "border-purple-500/30 bg-purple-950/5 hover:border-purple-500/50 hover:shadow-[0_0_15px_rgba(168,85,247,0.06)]"
+                          : "border-amber-500/25 bg-amber-950/5 hover:border-amber-500/45 hover:shadow-[0_0_15px_rgba(245,158,11,0.06)]"
                           }`}
                       >
                         <div>
                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded flex items-center gap-1 w-fit transition-all duration-300 ${e.isMain
-                              ? isUpcomingMain
-                                ? "bg-purple-500/25 text-purple-300 border border-purple-500/35 shadow-[0_0_10px_rgba(168,85,247,0.45)]"
-                                : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                              : "bg-amber-500/10 text-amber-450 border border-amber-500/20"
+                            ? isUpcomingMain
+                              ? "bg-purple-500/25 text-purple-300 border border-purple-500/35 shadow-[0_0_10px_rgba(168,85,247,0.45)]"
+                              : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                            : "bg-amber-500/10 text-amber-450 border border-amber-500/20"
                             }`}>
                             {e.isMain ? (
                               <>
