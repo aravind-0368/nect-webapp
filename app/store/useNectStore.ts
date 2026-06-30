@@ -78,13 +78,17 @@ interface NectState {
   lastMainExamCompletedAt: number | null;
   lastMainExamScore: number | null;
   lastMainExamTitle: string | null;
-  
+
   // Rank-up display trigger state
   prevPoints: number;
   showRankUpOverlay: boolean;
   rankUpFrom: string;
   rankUpTo: string;
   dismissRankUp: () => void;
+
+  userId: string | null;
+  setUserId: (val: string | null) => void;
+  setPoints: (val: number) => void;
 
   // Actions
   awardPoints: (amount: number, sourceModule?: string) => void;
@@ -113,12 +117,13 @@ interface NectState {
 export const useNectStore = create<NectState>()(
   persist(
     (set, get) => ({
-      points: 12840,
-      powerStreak: 5,
-      smartStreak: 7,
-      healthyStreak: 3,
+      userId: null,
+      points: 0,
+      powerStreak: 0,
+      smartStreak: 0,
+      healthyStreak: 0,
       lockRankTheme: true,
-      rankOverride: "S-Rank",
+      rankOverride: "E-Rank",
       autoApproveTransactions: true,
       visibleModules: {
         Dashboard: true,
@@ -136,17 +141,19 @@ export const useNectStore = create<NectState>()(
       lastMainExamScore: null,
       lastMainExamTitle: null,
 
-      prevPoints: 12840,
+      prevPoints: 0,
       showRankUpOverlay: false,
       rankUpFrom: "",
       rankUpTo: "",
 
       dismissRankUp: () => set({ showRankUpOverlay: false }),
+      setUserId: (val) => set({ userId: val }),
+      setPoints: (val) => set({ points: val }),
 
       awardPoints: (amount, sourceModule) => {
         const state = get();
         let multiplier = 1;
-        
+
         if (sourceModule && state.activeBoosts[sourceModule]) {
           const now = Date.now();
           if (now < state.activeBoosts[sourceModule]) {
@@ -156,7 +163,7 @@ export const useNectStore = create<NectState>()(
 
         const calculatedAmount = Math.round(amount * multiplier);
         const newPoints = Math.max(0, state.points + calculatedAmount);
-        
+
         const oldRank = getActiveRank(state.points);
         const newRank = getActiveRank(newPoints);
 
@@ -222,14 +229,23 @@ export const useNectStore = create<NectState>()(
         }));
       },
 
-      resetAll: () =>
+      resetAll: () => {
+        if (typeof window !== "undefined") {
+          const keys = Object.keys(localStorage);
+          keys.forEach((key) => {
+            if (key.startsWith("nect_") && key !== "nect-global-store") {
+              localStorage.removeItem(key);
+            }
+          });
+        }
         set({
-          points: 12840,
-          powerStreak: 5,
-          smartStreak: 7,
-          healthyStreak: 3,
+          userId: null,
+          points: 0,
+          powerStreak: 0,
+          smartStreak: 0,
+          healthyStreak: 0,
           lockRankTheme: true,
-          rankOverride: "S-Rank",
+          rankOverride: "E-Rank",
           autoApproveTransactions: true,
           visibleModules: {
             Dashboard: true,
@@ -247,11 +263,13 @@ export const useNectStore = create<NectState>()(
           lastMainExamScore: null,
           lastMainExamTitle: null,
           showRankUpOverlay: false,
-        }),
+        });
+      },
     }),
     {
       name: "nect-global-store",
       partialize: (state) => ({
+        userId: state.userId,
         points: state.points,
         powerStreak: state.powerStreak,
         smartStreak: state.smartStreak,

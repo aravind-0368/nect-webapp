@@ -30,28 +30,7 @@ type SearchResult = {
   fiberPer100g: number;
 };
 
-const initialPlateItems: PlateItem[] = [
-  {
-    id: 1,
-    name: "Rolled Oats",
-    servingUnit: "Bowls",
-    quantity: 1.5,
-    calories: 150,
-    protein: 5,
-    fiber: 4,
-    checked: true,
-  },
-  {
-    id: 2,
-    name: "Banana",
-    servingUnit: "Whole Fruit",
-    quantity: 1,
-    calories: 105,
-    protein: 1.3,
-    fiber: 3,
-    checked: false,
-  },
-];
+const initialPlateItems: PlateItem[] = [];
 
 const fieldClass =
   "rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500";
@@ -104,23 +83,29 @@ export function FoodModule({
     incrementHealthyStreak,
     decayHealthyStreak,
     awardPoints,
+    userId,
   } = useNectStore();
+
+  const getPlateKey = () => userId ? `nect_food_plate_items_${userId}` : "nect_food_plate_items";
+  const getWaterKey = () => userId ? `nect_food_water_${userId}` : "nect_food_water";
+  const getCompletedKey = () => userId ? `nect_food_day_completed_${userId}` : "nect_food_day_completed";
+  const getLastDateKey = () => userId ? `nect_food_last_date_${userId}` : "nect_food_last_date";
 
   useEffect(() => {
     const timer = setTimeout(() => {
       const todayStr = new Date().toISOString().split("T")[0];
-      const lastDate = localStorage.getItem("nect_food_last_date");
+      const lastDate = localStorage.getItem(getLastDateKey());
 
       let loadedPlate = initialPlateItems;
-      const storedPlate = localStorage.getItem("nect_food_plate_items");
+      const storedPlate = localStorage.getItem(getPlateKey());
       if (storedPlate) loadedPlate = JSON.parse(storedPlate);
 
       let loadedWater = 0;
-      const storedWater = localStorage.getItem("nect_food_water");
+      const storedWater = localStorage.getItem(getWaterKey());
       if (storedWater) loadedWater = Number(storedWater);
 
       let loadedCompleted = false;
-      const storedCompleted = localStorage.getItem("nect_food_day_completed");
+      const storedCompleted = localStorage.getItem(getCompletedKey());
       if (storedCompleted) loadedCompleted = JSON.parse(storedCompleted);
 
       if (lastDate !== todayStr) {
@@ -128,10 +113,10 @@ export function FoodModule({
         loadedPlate = [];
         loadedWater = 0;
         loadedCompleted = false;
-        localStorage.setItem("nect_food_last_date", todayStr);
-        localStorage.setItem("nect_food_plate_items", JSON.stringify([]));
-        localStorage.setItem("nect_food_water", "0");
-        localStorage.setItem("nect_food_day_completed", "false");
+        localStorage.setItem(getLastDateKey(), todayStr);
+        localStorage.setItem(getPlateKey(), JSON.stringify([]));
+        localStorage.setItem(getWaterKey(), "0");
+        localStorage.setItem(getCompletedKey(), "false");
       }
 
       setPlateItems(loadedPlate);
@@ -140,21 +125,21 @@ export function FoodModule({
       setIsLoaded(true);
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_plate_items", JSON.stringify(plateItems));
+    localStorage.setItem(getPlateKey(), JSON.stringify(plateItems));
   }, [plateItems, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_water", String(water));
+    localStorage.setItem(getWaterKey(), String(water));
   }, [water, isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem("nect_food_day_completed", JSON.stringify(dayCompleted));
+    localStorage.setItem(getCompletedKey(), JSON.stringify(dayCompleted));
   }, [dayCompleted, isLoaded]);
 
   // Internal fallbacks for telemetry if workout module is disabled
@@ -231,14 +216,18 @@ export function FoodModule({
       current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     );
 
-    // Award +10 XP for checking off meals eaten
-    if (!wasChecked) {
-      awardPoints(10, "Food");
-    }
+    // Award +10 XP for checking off meals eaten, deduct -10 XP if unchecked
+    awardPoints(wasChecked ? -10 : 10, "Food");
   }
 
   function handleDeletePlateItem(id: number) {
+    let wasChecked = false;
+    plateItems.forEach((item) => {
+      if (item.id === id) wasChecked = item.checked;
+    });
     setPlateItems((current) => current.filter((item) => item.id !== id));
+    // Deduct logging reward (+15 XP) and checkmark reward (+10 XP) if it was checked
+    awardPoints(wasChecked ? -25 : -15, "Food");
   }
 
   function handleCompleteNutritionDay() {
@@ -503,8 +492,8 @@ export function FoodModule({
             {/* Minimalist Water Intake Engine (RIGHT SIDE) */}
             <div
               className={`relative rounded-2xl border p-6 transition-all duration-300 ${isWaterGoalMet
-                  ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
-                  : "border-slate-800 bg-slate-950/35"
+                ? "border-emerald-500/80 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20"
+                : "border-slate-800 bg-slate-950/35"
                 }`}
             >
               {isWaterGoalMet && (
@@ -546,7 +535,7 @@ export function FoodModule({
                     <Plus className="h-4 w-4" />
                     <span>Add 1 Cup of water</span>
                   </button>
-                  
+
                   {water > 0 && (
                     <button
                       type="button"
@@ -603,11 +592,10 @@ export function FoodModule({
                   <button
                     type="button"
                     disabled={dayCompleted}
-                    className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${
-                      dayCompleted
+                    className={`rounded-lg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer ${dayCompleted
                         ? "bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed shadow-none"
                         : "bg-emerald-600 hover:bg-emerald-500 active:scale-95"
-                    }`}
+                      }`}
                     onClick={handleCompleteNutritionDay}
                   >
                     {dayCompleted ? "✓ Day Recorded" : "Complete Nutrition Day"}
@@ -686,9 +674,9 @@ export function FoodModule({
                 </table>
               </div>
             )}
-            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
   );
 }

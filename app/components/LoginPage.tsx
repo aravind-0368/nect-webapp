@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useMemo, useState, useEffect } from "react";
 import { useNectStore, getActiveRank, rankTiers } from "../store/useNectStore";
+import { createClient } from "../../utils/supabase/client";
 import {
   BookOpen,
   Key,
@@ -173,7 +174,8 @@ function renderFormattedText(text: string): React.ReactNode[] {
 }
 
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
-  const { points, rankOverride } = useNectStore();
+  const supabase = createClient();
+  const { points, rankOverride, setUserId, setPoints, setPowerStreak, setSmartStreak, setHealthyStreak } = useNectStore();
   const accentColor = useMemo(() => {
     return rankTiers.find((rank) => rank.name === rankOverride)?.color ?? getActiveRank(points).color;
   }, [rankOverride, points]);
@@ -184,6 +186,13 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [signupPassword, setSignupPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [dob, setDob] = useState("");
+  
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
@@ -233,26 +242,137 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     [confirmPassword, signupPassword],
   );
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onAuthenticated();
+    setAuthError("");
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      if (error) {
+        setAuthError(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        // Fetch public User profile
+        const { data: profile } = await supabase
+          .from("User")
+          .select("*")
+          .eq("id", data.user.id)
+          .maybeSingle();
+
+        if (profile) {
+          setPoints(profile.totalPoints);
+          setPowerStreak(profile.workoutStreak);
+          setSmartStreak(profile.learningStreak);
+          setHealthyStreak(profile.foodStreak);
+        } else {
+          // If no profile (edge case), initialize one
+          await supabase.from("User").insert({
+            id: data.user.id,
+            email: data.user.email || "",
+            username: data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User",
+            totalPoints: 12840,
+            currentRank: "S-Rank"
+          });
+        }
+        
+        setUserId(data.user.id);
+        onAuthenticated();
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An unexpected error occurred during initialization.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  function handleSignup(event: FormEvent<HTMLFormElement>) {
+  async function handleSignup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setAuthError("");
 
     if (passwordsMismatch) {
       return;
     }
 
-    if (dob) {
-      localStorage.setItem("nect_telemetry_dob", dob);
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: signupEmail,
+        password: signupPassword,
+        options: {
+          data: {
+            username: signupUsername,
+          },
+        },
+      });
+
+      if (error) {
+        setAuthError(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        if (dob) {
+          localStorage.setItem(`nect_telemetry_dob_${data.user.id}`, dob);
+        }
+        
+        // Wait briefly for trigger execution
+        setTimeout(async () => {
+          const { data: profile } = await supabase
+            .from("User")
+            .select("*")
+            .eq("id", data.user!.id)
+            .maybeSingle();
+            
+          if (profile) {
+            setPoints(profile.totalPoints);
+            setPowerStreak(profile.workoutStreak);
+            setSmartStreak(profile.learningStreak);
+            setHealthyStreak(profile.foodStreak);
+          }
+        }, 1500);
+
+        if (data.session) {
+          setUserId(data.user.id);
+          onAuthenticated();
+        } else {
+          setAuthError("Account created! Please check your email to verify your connection.");
+        }
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An unexpected error occurred during telemetry configuration.");
+    } finally {
+      setIsLoading(false);
     }
-    onAuthenticated();
   }
 
-  function handleForgot(event: FormEvent<HTMLFormElement>) {
+  async function handleForgot(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setAuthError("");
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(loginEmail, {
+        redirectTo: window.location.origin,
+      });
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setAuthError("Recovery token dispatched. Check your email!");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "Could not dispatch recovery token.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const navigateToGateway = () => {
@@ -389,38 +509,53 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         title="Welcome Back"
                         subtitle="Enter credentials to initialize your control panel."
                       />
-                      <input className={inputClass} placeholder="Username" required />
+                      {authError && (
+                        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-center text-xs font-mono text-rose-400 animate-pulse">
+                          {authError}
+                        </div>
+                      )}
+                      <input
+                        className={inputClass}
+                        placeholder="Email Address"
+                        type="email"
+                        value={loginEmail}
+                        onChange={(e) => { setLoginEmail(e.target.value); setAuthError(""); }}
+                        required
+                      />
                       <PasswordInput
                         show={showPassword}
                         onToggle={() => setShowPassword((value) => !value)}
                         placeholder="Password"
+                        value={loginPassword}
+                        onChange={(val) => { setLoginPassword(val); setAuthError(""); }}
                       />
                       <div className="flex justify-between items-center">
                         <button
                           type="button"
                           className="text-xs font-mono transition-colors hover:text-[#c084fc] text-slate-500"
-                          onClick={() => setActiveForm(null)}
+                          onClick={() => { setActiveForm(null); setAuthError(""); }}
                         >
                           BACK TO MENU
                         </button>
                         <button
                           type="button"
                           className="text-xs font-mono transition-colors hover:text-[#c084fc] text-slate-500"
-                          onClick={() => setActiveForm("forgot")}
+                          onClick={() => { setActiveForm("forgot"); setAuthError(""); }}
                         >
                           Forgot Password?
                         </button>
                       </div>
                       <button
                         type="submit"
-                        className="w-full rounded-xl bg-[#5B009C] py-3.5 font-mono text-sm font-bold text-white border border-[#a855f7] transition-all duration-200 hover:scale-[1.02] hover:bg-[#510087] active:scale-[0.98] shadow-[0_0_15px_rgba(91,0,156,0.3)]"
+                        disabled={isLoading}
+                        className="w-full rounded-xl bg-[#5B009C] py-3.5 font-mono text-sm font-bold text-white border border-[#a855f7] transition-all duration-200 hover:scale-[1.02] hover:bg-[#510087] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(91,0,156,0.3)]"
                       >
-                        Login
+                        {isLoading ? "INITIALIZING CONTROLS..." : "Login"}
                       </button>
                       <AuthFooter
                         text="New user sequence?"
                         action="Create account"
-                        onClick={() => setActiveForm("signup")}
+                        onClick={() => { setActiveForm("signup"); setAuthError(""); }}
                       />
                     </form>
                   )}
@@ -431,10 +566,23 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         title="Create Profile"
                         subtitle="Register telemetry to start tracking consistency levels."
                       />
-                      <input className={inputClass} placeholder="Username" required />
+                      {authError && (
+                        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-center text-xs font-mono text-rose-400">
+                          {authError}
+                        </div>
+                      )}
+                      <input
+                        className={inputClass}
+                        placeholder="Username"
+                        value={signupUsername}
+                        onChange={(e) => { setSignupUsername(e.target.value); setAuthError(""); }}
+                        required
+                      />
                       <input
                         className={inputClass}
                         placeholder="Email Address"
+                        value={signupEmail}
+                        onChange={(e) => { setSignupEmail(e.target.value); setAuthError(""); }}
                         required
                         type="email"
                       />
@@ -447,7 +595,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                           required
                           type="date"
                           value={dob}
-                          onChange={(event) => setDob(event.target.value)}
+                          onChange={(event) => { setDob(event.target.value); setAuthError(""); }}
                         />
                       </div>
                       <PasswordInput
@@ -455,7 +603,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         onToggle={() => setShowSignupPassword((value) => !value)}
                         placeholder="Password"
                         value={signupPassword}
-                        onChange={setSignupPassword}
+                        onChange={(val) => { setSignupPassword(val); setAuthError(""); }}
                         isInvalid={passwordsMismatch}
                       />
                       <input
@@ -466,7 +614,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         placeholder="Confirm Password"
                         type="password"
                         value={confirmPassword}
-                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        onChange={(event) => { setConfirmPassword(event.target.value); setAuthError(""); }}
                         required
                       />
                       {passwordsMismatch && (
@@ -478,22 +626,22 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         <button
                           type="button"
                           className="text-xs font-mono transition-colors hover:text-[#c084fc] text-slate-500"
-                          onClick={() => setActiveForm(null)}
+                          onClick={() => { setActiveForm(null); setAuthError(""); }}
                         >
                           BACK TO MENU
                         </button>
                       </div>
                       <button
                         type="submit"
-                        disabled={passwordsMismatch}
+                        disabled={passwordsMismatch || isLoading}
                         className="w-full rounded-xl bg-[#5B009C] py-3.5 font-mono text-sm font-bold text-white border border-[#a855f7] transition-all duration-200 hover:scale-[1.02] hover:bg-[#510087] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600 disabled:hover:scale-100 disabled:border-slate-950 shadow-[0_0_15px_rgba(91,0,156,0.2)]"
                       >
-                        Create Account
+                        {isLoading ? "CREATING REGISTRY..." : "Create Account"}
                       </button>
                       <AuthFooter
                         text="Existing registry?"
                         action="Login"
-                        onClick={() => setActiveForm("login")}
+                        onClick={() => { setActiveForm("login"); setAuthError(""); }}
                       />
                     </form>
                   )}
@@ -504,9 +652,16 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         title="Dispatch Token"
                         subtitle="Enter registered email address to dispatch recovery codes."
                       />
+                      {authError && (
+                        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-center text-xs font-mono text-rose-400">
+                          {authError}
+                        </div>
+                      )}
                       <input
                         className={inputClass}
                         placeholder="Email Address"
+                        value={loginEmail}
+                        onChange={(e) => { setLoginEmail(e.target.value); setAuthError(""); }}
                         required
                         type="email"
                       />
@@ -514,21 +669,22 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         <button
                           type="button"
                           className="text-xs font-mono transition-colors hover:text-[#c084fc] text-slate-500"
-                          onClick={() => setActiveForm("login")}
+                          onClick={() => { setActiveForm("login"); setAuthError(""); }}
                         >
                           BACK TO LOGIN
                         </button>
                       </div>
                       <button
                         type="submit"
+                        disabled={isLoading}
                         className="w-full rounded-xl bg-[#5B009C] py-3.5 font-mono text-sm font-bold text-white border border-[#a855f7] transition-all duration-200 hover:scale-[1.02] hover:bg-[#510087] active:scale-[0.98] shadow-[0_0_15px_rgba(91,0,156,0.3)]"
                       >
-                        DISPATCH CODES
+                        {isLoading ? "DISPATCHING TOKEN..." : "DISPATCH CODES"}
                       </button>
                       <AuthFooter
                         text="Cancel command?"
                         action="Login"
-                        onClick={() => setActiveForm("login")}
+                        onClick={() => { setActiveForm("login"); setAuthError(""); }}
                       />
                     </form>
                   )}

@@ -62,75 +62,9 @@ const defaultCategories: Category[] = [
   { name: "Other", color: "#64748b", monthlyLimit: null }, // Slate
 ];
 
-const defaultTransactions: Transaction[] = [
-  {
-    id: "tx-1",
-    name: "Monthly Salary Deposit",
-    type: "income",
-    category: "Salary",
-    amount: 3200,
-    date: "2026-06-01",
-  },
-  {
-    id: "tx-2",
-    name: "Apartment Rental Payment",
-    type: "expense",
-    category: "Rent & Utilities",
-    amount: 1000,
-    date: "2026-06-01",
-  },
-  {
-    id: "tx-3",
-    name: "Organic Groceries",
-    type: "expense",
-    category: "Food",
-    amount: 280,
-    date: "2026-06-04",
-  },
-  {
-    id: "tx-4",
-    name: "Freelance UI Design",
-    type: "income",
-    category: "Freelance",
-    amount: 850,
-    date: "2026-06-05",
-  },
-  {
-    id: "tx-5",
-    name: "Fast Food Takeout",
-    type: "expense",
-    category: "Food",
-    amount: 130,
-    date: "2026-06-07",
-  },
-];
+const defaultTransactions: Transaction[] = [];
 
-const defaultRecurringRules: RecurringRule[] = [
-  {
-    id: "rec-1",
-    name: "Netflix Subscription",
-    type: "expense",
-    category: "Subscriptions",
-    amount: 15,
-    dayOfMonth: 8,
-  },
-  {
-    id: "rec-2",
-    name: "Gym Membership",
-    type: "expense",
-    category: "Other",
-    amount: 45,
-    dayOfMonth: 8,
-  },
-  {
-    id: "rec-3",
-    name: "AWS Cloud Overheads",
-    type: "expense",
-    category: "Freelance",
-    amount: 120,
-    dayOfMonth: 12,
-  },
-];
+const defaultRecurringRules: RecurringRule[] = [];
 
 const colorPalette = [
   { name: "Red", hex: "#ef4444" },
@@ -142,7 +76,14 @@ const colorPalette = [
 ];
 
 export function MoneyModule() {
-  const { autoApproveTransactions, currency, setCurrency } = useNectStore();
+  const { autoApproveTransactions, currency, setCurrency, userId } = useNectStore();
+
+  const getInitializedKey = () => userId ? `nect_money_initialized_${userId}` : "nect_money_initialized";
+  const getBalanceKey = () => userId ? `nect_money_initial_balance_${userId}` : "nect_money_initial_balance";
+  const getTransactionsKey = () => userId ? `nect_money_transactions_${userId}` : "nect_money_transactions";
+  const getCategoriesKey = () => userId ? `nect_money_categories_${userId}` : "nect_money_categories";
+  const getRecurringKey = () => userId ? `nect_money_recurring_rules_${userId}` : "nect_money_recurring_rules";
+  const getProcessedKey = () => userId ? `nect_money_processed_recurring_${userId}` : "nect_money_processed_recurring";
   // --- STATE ---
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const [initialBalance, setInitialBalance] = useState<number>(0);
@@ -196,41 +137,41 @@ export function MoneyModule() {
     updatedRec: RecurringRule[],
     updatedProcessed: string[]
   ) => {
-    localStorage.setItem("nect_money_initialized", String(updatedInitialized));
-    localStorage.setItem("nect_money_initial_balance", String(updatedInitialBalance));
-    localStorage.setItem("nect_money_transactions", JSON.stringify(updatedTx));
-    localStorage.setItem("nect_money_categories", JSON.stringify(updatedCat));
-    localStorage.setItem("nect_money_recurring_rules", JSON.stringify(updatedRec));
-    localStorage.setItem("nect_money_processed_recurring", JSON.stringify(updatedProcessed));
+    localStorage.setItem(getInitializedKey(), String(updatedInitialized));
+    localStorage.setItem(getBalanceKey(), String(updatedInitialBalance));
+    localStorage.setItem(getTransactionsKey(), JSON.stringify(updatedTx));
+    localStorage.setItem(getCategoriesKey(), JSON.stringify(updatedCat));
+    localStorage.setItem(getRecurringKey(), JSON.stringify(updatedRec));
+    localStorage.setItem(getProcessedKey(), JSON.stringify(updatedProcessed));
   };
 
   // --- LOCAL STORAGE SYNC ---
   useEffect(() => {
     const timer = setTimeout(() => {
-      const storedInitialized = localStorage.getItem("nect_money_initialized");
+      const storedInitialized = localStorage.getItem(getInitializedKey());
       if (storedInitialized === "true") {
         setIsInitialized(true);
 
-        const balanceVal = Number(localStorage.getItem("nect_money_initial_balance") || "0");
+        const balanceVal = Number(localStorage.getItem(getBalanceKey()) || "0");
         setInitialBalance(balanceVal);
 
         let loadedTx: Transaction[] = [];
-        const storedTx = localStorage.getItem("nect_money_transactions");
+        const storedTx = localStorage.getItem(getTransactionsKey());
         if (storedTx) loadedTx = JSON.parse(storedTx);
         else loadedTx = defaultTransactions;
 
         let loadedCat = defaultCategories;
-        const storedCat = localStorage.getItem("nect_money_categories");
+        const storedCat = localStorage.getItem(getCategoriesKey());
         if (storedCat) loadedCat = JSON.parse(storedCat);
         setCategories(loadedCat);
 
         let loadedRec = defaultRecurringRules;
-        const storedRec = localStorage.getItem("nect_money_recurring_rules");
+        const storedRec = localStorage.getItem(getRecurringKey());
         if (storedRec) loadedRec = JSON.parse(storedRec);
         setRecurringRules(loadedRec);
 
         let loadedProcessed: string[] = [];
-        const storedProcessed = localStorage.getItem("nect_money_processed_recurring");
+        const storedProcessed = localStorage.getItem(getProcessedKey());
         if (storedProcessed) loadedProcessed = JSON.parse(storedProcessed);
 
         const storedCurrency = localStorage.getItem("nect_money_currency");
@@ -276,8 +217,8 @@ export function MoneyModule() {
             loadedTx = newTxList;
             loadedProcessed = newProcessed;
 
-            localStorage.setItem("nect_money_transactions", JSON.stringify(newTxList));
-            localStorage.setItem("nect_money_processed_recurring", JSON.stringify(newProcessed));
+            localStorage.setItem(getTransactionsKey(), JSON.stringify(newTxList));
+            localStorage.setItem(getProcessedKey(), JSON.stringify(newProcessed));
 
             setNotification(`Auto-processed ${pending.length} recurring transaction(s).`);
           }
@@ -289,7 +230,7 @@ export function MoneyModule() {
     }, 0);
 
     return () => clearTimeout(timer);
-  }, [autoApproveTransactions]);
+  }, [autoApproveTransactions, userId]);
 
   // --- DYNAMIC CALCULATIONS ---
   const currencySymbol = getCurrencySymbol(currency);
@@ -831,17 +772,15 @@ export function MoneyModule() {
       <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
 
         {/* Core Transaction Engine Panel */}
-        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-between relative z-10 transition-all duration-550 ${
-          txType === "income"
+        <div className={`rounded-2xl border p-6 backdrop-blur-sm flex flex-col justify-between relative z-10 transition-all duration-550 ${txType === "income"
             ? "border-emerald-500/30 bg-emerald-950/2 shadow-[0_0_30px_rgba(16,185,129,0.08)]"
             : "border-rose-500/30 bg-rose-950/2 shadow-[0_0_30px_rgba(239,68,68,0.08)]"
-        }`}>
+          }`}>
           <div>
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-4 mb-5">
               <div className="flex items-center gap-3">
-                <div className={`flex h-11 w-11 items-center justify-center rounded-xl border bg-slate-950/50 transition-colors duration-500 ${
-                  txType === "income" ? "border-emerald-500/30 text-emerald-400" : "border-rose-500/30 text-rose-400"
-                }`}>
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl border bg-slate-950/50 transition-colors duration-500 ${txType === "income" ? "border-emerald-500/30 text-emerald-400" : "border-rose-500/30 text-rose-400"
+                  }`}>
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
@@ -854,19 +793,17 @@ export function MoneyModule() {
               <div className="relative inline-flex rounded-xl border border-slate-800 bg-slate-950/60 p-0.5 w-[220px] h-[36px] overflow-hidden">
                 {/* Active sliding pill */}
                 <div
-                  className={`absolute top-0.5 bottom-0.5 left-0.5 w-[106px] rounded-lg transition-all duration-300 ease-out ${
-                    txType === "income"
+                  className={`absolute top-0.5 bottom-0.5 left-0.5 w-[106px] rounded-lg transition-all duration-300 ease-out ${txType === "income"
                       ? "transform translate-x-0 bg-emerald-500/15 border border-emerald-500/25 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                       : "transform translate-x-[108px] bg-rose-500/15 border border-rose-500/25 shadow-[0_0_12px_rgba(239,68,68,0.15)]"
-                  }`}
+                    }`}
                 />
 
                 <button
                   type="button"
                   onClick={() => setTxType("income")}
-                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
-                    txType === "income" ? "text-emerald-400 font-black" : "text-slate-400 hover:text-slate-200"
-                  }`}
+                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${txType === "income" ? "text-emerald-400 font-black" : "text-slate-400 hover:text-slate-200"
+                    }`}
                 >
                   <ArrowUp className={`h-3.5 w-3.5 transition-transform duration-300 ${txType === "income" ? "scale-110" : ""}`} />
                   <span>Income</span>
@@ -874,9 +811,8 @@ export function MoneyModule() {
                 <button
                   type="button"
                   onClick={() => setTxType("expense")}
-                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${
-                    txType === "expense" ? "text-rose-400 font-black" : "text-slate-400 hover:text-slate-200"
-                  }`}
+                  className={`relative z-10 w-[107px] py-1 text-xs font-black uppercase tracking-wider transition-colors duration-300 cursor-pointer flex items-center justify-center gap-1.5 ${txType === "expense" ? "text-rose-400 font-black" : "text-slate-400 hover:text-slate-200"
+                    }`}
                 >
                   <ArrowDown className={`h-3.5 w-3.5 transition-transform duration-300 ${txType === "expense" ? "scale-110" : ""}`} />
                   <span>Expense</span>
@@ -915,8 +851,8 @@ export function MoneyModule() {
                     value={txAmount}
                     onChange={(e) => setTxAmount(e.target.value)}
                     className={`rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none transition-all duration-200 placeholder:text-slate-500 ${txType === "income"
-                        ? "focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25"
-                        : "focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25"
+                      ? "focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25"
+                      : "focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25"
                       }`}
                   />
                 </div>
@@ -961,8 +897,8 @@ export function MoneyModule() {
                       setShowCategoryCreator(!showCategoryCreator);
                     }}
                     className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-xl border transition-all active:scale-95 duration-100 cursor-pointer ${showCategoryCreator
-                        ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
-                        : "border-slate-700 bg-slate-950/70 text-slate-400 hover:text-white"
+                      ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
+                      : "border-slate-700 bg-slate-950/70 text-slate-400 hover:text-white"
                       }`}
                     title="Create custom category"
                   >
@@ -974,13 +910,13 @@ export function MoneyModule() {
                   const limitStatus = checkCategoryThreshold(activeTxCategory);
                   const cat = categories.find((c) => c.name === activeTxCategory);
                   if (!cat || cat.monthlyLimit === null) return null;
-                  
+
                   const percent = Math.round(limitStatus.percent);
                   if (percent < 60) return null;
 
                   let textColor = "text-amber-455";
                   let dotColor = "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]";
-                  
+
                   if (percent >= 80) {
                     textColor = "text-red-400";
                     dotColor = "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse";
@@ -1009,7 +945,7 @@ export function MoneyModule() {
                     </h4>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      
+
                       {/* Left: Add / Edit Form */}
                       <div className="space-y-4">
                         <div className="flex flex-col gap-1">
@@ -1378,11 +1314,10 @@ export function MoneyModule() {
             <button
               type="button"
               onClick={() => setShowLimitManager(!showLimitManager)}
-              className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wider transition-all duration-100 flex items-center gap-1.5 cursor-pointer ${
-                showLimitManager
+              className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wider transition-all duration-100 flex items-center gap-1.5 cursor-pointer ${showLimitManager
                   ? "border-[var(--rank-accent)] bg-[var(--rank-accent)]/15 text-white"
                   : "border-slate-800 bg-slate-950/60 text-slate-400 hover:text-white"
-              }`}
+                }`}
             >
               <Sliders className="h-3.5 w-3.5" />
               {showLimitManager ? "Hide Spending Limits" : "Manage Spending Limits"}
@@ -1407,7 +1342,7 @@ export function MoneyModule() {
                 Category Spending Caps / Limits Configurator
               </h3>
             </div>
-            
+
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {categories.map((c) => {
                 const spent = categoryExpenses[c.name] || 0;
@@ -1502,11 +1437,10 @@ export function MoneyModule() {
                         {tx.name}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-2xs font-bold ${
-                          tx.type === "income"
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-2xs font-bold ${tx.type === "income"
                             ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                             : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                        }`}>
+                          }`}>
                           {tx.type === "income" ? "Earning" : "Expense"}
                         </span>
                       </td>
@@ -1565,7 +1499,8 @@ export function MoneyModule() {
       {/* Dot Matrix Bill Receipt Modal */}
       {selectedTxForBill && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
-          <style dangerouslySetInnerHTML={{ __html: `
+          <style dangerouslySetInnerHTML={{
+            __html: `
             @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
             .dot-matrix {
               font-family: 'VT323', 'Courier New', Courier, monospace;
@@ -1575,7 +1510,7 @@ export function MoneyModule() {
           <div className="relative max-w-xl w-full bg-[#f4f3ef] text-[#1a1a1a] border border-[#d5d4cd] rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 transform scale-100 flex flex-col font-mono">
             {/* Perforated Top edge decorative element */}
             <div className="w-full h-3 bg-[radial-gradient(circle_at_bottom,_transparent_4px,_#f4f3ef_5px)] bg-[length:12px_12px]" />
-            
+
             <div className="p-6 flex-1 flex flex-col">
               {/* Receipt Header Info */}
               <div className="flex justify-between items-center text-xs border-b border-dashed border-slate-400 pb-3 mb-4 dot-matrix text-lg font-bold">
@@ -1602,7 +1537,7 @@ export function MoneyModule() {
                 if (selectedTxForBill.type === "expense" && cat && cat.monthlyLimit !== null && cat.monthlyLimit > 0) {
                   const limitAmount = cat.monthlyLimit;
                   const spentAmount = categoryExpenses[cat.name] || 0;
-                  
+
                   if (spentAmount === limitAmount) {
                     return (
                       <div className="mt-6 border-t border-dashed border-slate-400 pt-3 text-left md:pl-10 dot-matrix text-lg font-normal space-y-1">
@@ -1643,7 +1578,7 @@ export function MoneyModule() {
                 Close Receipt
               </button>
             </div>
-            
+
             {/* Perforated Bottom edge decorative element */}
             <div className="w-full h-3 bg-[radial-gradient(circle_at_top,_transparent_4px,_#f4f3ef_5px)] bg-[length:12px_12px] bg-repeat-x" />
           </div>

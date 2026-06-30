@@ -1,5 +1,129 @@
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+// 1. Enforce strict transaction types
+enum TransactionType {
+  EARNING
+  EXPENSE
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  username       String?
+  totalPoints    Int      @default(0)
+  currentRank    String   @default("Novice")
+  height         Float?   // In cm, for Exercise Module
+  weight         Float?   // In kg, for Exercise Module
+  createdAt      DateTime @default(now())
+  
+  // Cache active streaks for instantaneous HUD rendering
+  workoutStreak  Int      @default(0)
+  learningStreak Int      @default(0)
+  foodStreak     Int      @default(0)
+  
+  tasks          Task[]
+  studyLogs      StudyLog[]
+  revisions      Revision[]
+  exams          Exam[]
+  workoutSplits  WorkoutSplit[]
+  foodLogs       FoodLog[]
+  transactions   Transaction[]
+  recurringRules RecurringRule[] // Links user to their subscription schedules
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  userId      String
+  title       String
+  isCompleted Boolean   @default(false)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudyLog {
+  id          String   @id @default(uuid())
+  userId      String
+  subject     String
+  durationMin Int
+  isCompleted Boolean  @default(false)
+  logDate     DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Revision {
+  id          String    @id @default(uuid())
+  userId      String
+  subject     String
+  plannedDate DateTime
+  isCompleted Boolean   @default(false)
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Exam {
+  id          String   @id @default(uuid())
+  userId      String
+  subject     String
+  marksGained Float
+  totalMarks  Float
+  percentage  Float    // Note: You can also calculate this at runtime, but storing is fine
+  examDate    DateTime
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WorkoutSplit {
+  id          String   @id @default(uuid())
+  userId      String
+  dayOfWeek   Int      // 1 = Monday, 7 = Sunday
+  focusGroup  String   // Chest, Back, Arms, Abs, Legs, Rest
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FoodLog {
+  id            String   @id @default(uuid())
+  userId        String
+  foodName      String
+  calories      Float    // Pulls straight into your dashboard progress bar targets!
+  protein       Float
+  quantityGrams Float
+  waterIntakeMl Int      @default(0)
+  logDate       DateTime @default(now())
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id       String          @id @default(uuid())
+  userId   String
+  type     TransactionType // Strict Type safety enforced here
+  amount   Float
+  category String
+  date     DateTime        @default(now())
+  
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 2. New Model: Populates your "RECURRING ROSTER" UI panel perfectly
+model RecurringRule {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String   // e.g., "Netflix Subscription", "Gym Membership"
+  amount      Float
+  category    String   // e.g., "Subscriptions", "Other"
+  dueDayIndex Int      // Day of the month it triggers (e.g., 8 means "Due: Day 8 of month")
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

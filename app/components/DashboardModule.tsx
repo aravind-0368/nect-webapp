@@ -120,8 +120,23 @@ export function DashboardModule({
     lastMainExamTitle,
     incrementPowerStreak,
     incrementSmartStreak,
-    incrementHealthyStreak
+    incrementHealthyStreak,
+    userId,
   } = useNectStore();
+
+  const getTasksKey = () => userId ? `nect_tasks_${userId}` : "nect_tasks";
+  const getTxKey = () => userId ? `nect_money_transactions_${userId}` : "nect_money_transactions";
+  const getCatKey = () => userId ? `nect_money_categories_${userId}` : "nect_money_categories";
+  const getWorkoutsKey = () => userId ? `nect_workout_items_${userId}` : "nect_workout_items";
+  const getRestKey = () => userId ? `nect_workout_rest_days_${userId}` : "nect_workout_rest_days";
+  const getLogsKey = () => userId ? `nect_workout_sleep_logs_${userId}` : "nect_workout_sleep_logs";
+  const getResetWeekKey = () => userId ? `nect_workout_last_reset_week_${userId}` : "nect_workout_last_reset_week";
+  const getSessionsKey = () => userId ? `nect_learning_sessions_${userId}` : "nect_learning_sessions";
+  const getRevisionsKey = () => userId ? `nect_learning_revisions_${userId}` : "nect_learning_revisions";
+  const getExamsKey = () => userId ? `nect_learning_exams_${userId}` : "nect_learning_exams";
+  const getLastLearningDateKey = () => userId ? `nect_learning_last_date_${userId}` : "nect_learning_last_date";
+  const getPlateKey = () => userId ? `nect_food_plate_items_${userId}` : "nect_food_plate_items";
+  const getTelemetryHistoryKey = () => userId ? `nect_telemetry_history_${userId}` : "nect_telemetry_history";
 
   const isPeakMentalPowerActive = useMemo(() => {
     return peakMentalPowerUntil ? Date.now() < peakMentalPowerUntil : false;
@@ -233,16 +248,16 @@ export function DashboardModule({
   // --- LOCAL STORAGE DATA HYDRATION ---
   useEffect(() => {
     const timer = setTimeout(() => {
-      const storedTasks = localStorage.getItem("nect_tasks");
+      const storedTasks = localStorage.getItem(getTasksKey());
       if (storedTasks) setTasks(JSON.parse(storedTasks));
 
-      const storedTx = localStorage.getItem("nect_money_transactions");
-      const storedCat = localStorage.getItem("nect_money_categories");
+      const storedTx = localStorage.getItem(getTxKey());
+      const storedCat = localStorage.getItem(getCatKey());
       if (storedTx) setTransactions(JSON.parse(storedTx));
       if (storedCat) setCategories(JSON.parse(storedCat));
 
-      const storedWorkouts = localStorage.getItem("nect_workout_items");
-      const storedRest = localStorage.getItem("nect_workout_rest_days");
+      const storedWorkouts = localStorage.getItem(getWorkoutsKey());
+      const storedRest = localStorage.getItem(getRestKey());
       if (storedWorkouts) {
         let parsed = JSON.parse(storedWorkouts);
         const getStartOfWeek = () => {
@@ -253,7 +268,7 @@ export function DashboardModule({
           sunday.setHours(0, 0, 0, 0);
           return sunday.getTime();
         };
-        const lastReset = localStorage.getItem("nect_workout_last_reset_week");
+        const lastReset = localStorage.getItem(getResetWeekKey());
         const currentWeekStart = getStartOfWeek();
         if (!lastReset || parseInt(lastReset) < currentWeekStart) {
           parsed = parsed.map((item: any) => ({
@@ -261,14 +276,14 @@ export function DashboardModule({
             checkedSets: item.checkedSets ? item.checkedSets.map(() => false) : Array.from({ length: item.sets || 3 }, () => false),
             completed: false
           }));
-          localStorage.setItem("nect_workout_items", JSON.stringify(parsed));
-          localStorage.setItem("nect_workout_last_reset_week", currentWeekStart.toString());
+          localStorage.setItem(getWorkoutsKey(), JSON.stringify(parsed));
+          localStorage.setItem(getResetWeekKey(), currentWeekStart.toString());
         }
         setWorkouts(parsed);
       }
       if (storedRest) setRestDays(JSON.parse(storedRest));
 
-      const storedLogs = localStorage.getItem("nect_workout_sleep_logs");
+      const storedLogs = localStorage.getItem(getLogsKey());
       if (storedLogs) {
         try {
           setSleepLogs(JSON.parse(storedLogs));
@@ -277,10 +292,10 @@ export function DashboardModule({
         }
       }
 
-      const storedSessions = localStorage.getItem("nect_learning_sessions");
-      const storedRevs = localStorage.getItem("nect_learning_revisions");
-      const storedExams = localStorage.getItem("nect_learning_exams");
-      const lastLearningDate = localStorage.getItem("nect_learning_last_date");
+      const storedSessions = localStorage.getItem(getSessionsKey());
+      const storedRevs = localStorage.getItem(getRevisionsKey());
+      const storedExams = localStorage.getItem(getExamsKey());
+      const lastLearningDate = localStorage.getItem(getLastLearningDateKey());
       const todayStr = new Date().toISOString().split("T")[0];
 
       let parsedSessions = storedSessions ? JSON.parse(storedSessions) : [];
@@ -289,19 +304,19 @@ export function DashboardModule({
       if (lastLearningDate !== todayStr) {
         parsedSessions = [];
         parsedRevs = parsedRevs.map((r: any) => ({ ...r, checked: false }));
-        localStorage.setItem("nect_learning_last_date", todayStr);
-        localStorage.setItem("nect_learning_sessions", JSON.stringify([]));
-        localStorage.setItem("nect_learning_revisions", JSON.stringify(parsedRevs));
+        localStorage.setItem(getLastLearningDateKey(), todayStr);
+        localStorage.setItem(getSessionsKey(), JSON.stringify([]));
+        localStorage.setItem(getRevisionsKey(), JSON.stringify(parsedRevs));
       }
 
       setSessions(parsedSessions);
       setRevisions(parsedRevs);
       if (storedExams) setExams(JSON.parse(storedExams));
 
-      const storedPlate = localStorage.getItem("nect_food_plate_items");
+      const storedPlate = localStorage.getItem(getPlateKey());
       if (storedPlate) setFoodPlate(JSON.parse(storedPlate));
 
-      const storedHistory = localStorage.getItem("nect_telemetry_history");
+      const storedHistory = localStorage.getItem(getTelemetryHistoryKey());
       let parsedHistory = [];
       if (storedHistory) {
         try {
@@ -324,7 +339,7 @@ export function DashboardModule({
             height: height + hVar
           });
         }
-        localStorage.setItem("nect_telemetry_history", JSON.stringify(seed));
+        localStorage.setItem(getTelemetryHistoryKey(), JSON.stringify(seed));
         parsedHistory = seed;
       }
       setTelemetryHistory(parsedHistory);
@@ -332,13 +347,13 @@ export function DashboardModule({
     }, 0);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
     if (weight === undefined || height === undefined || age === undefined) return;
 
-    const storedHistory = localStorage.getItem("nect_telemetry_history");
+    const storedHistory = localStorage.getItem(getTelemetryHistoryKey());
     let history = [];
     if (storedHistory) {
       try {
@@ -364,9 +379,9 @@ export function DashboardModule({
       history = history.slice(history.length - 7);
     }
 
-    localStorage.setItem("nect_telemetry_history", JSON.stringify(history));
+    localStorage.setItem(getTelemetryHistoryKey(), JSON.stringify(history));
     setTelemetryHistory(history);
-  }, [weight, height, age, isLoaded]);
+  }, [weight, height, age, isLoaded, userId]);
 
   // --- NEW CHARTS DATA ENGINE ---
   const workoutsByDayData = useMemo(() => {
@@ -443,15 +458,6 @@ export function DashboardModule({
 
   // --- MUSCLE GROUP WEEKLY LOG CALCULATION ---
   const muscleGroupsProgress = useMemo(() => {
-    const defaultFallbacks = {
-      chest: 85,
-      legs: 45,
-      back: 62,
-      arms: 90,
-      abs: 20,
-      shoulders: 75
-    };
-
     const groups = ["chest", "legs", "back", "arms", "abs", "shoulders"];
     const results: Record<string, number> = {};
 
@@ -468,7 +474,7 @@ export function DashboardModule({
       });
 
       if (related.length === 0) {
-        results[group] = defaultFallbacks[group as keyof typeof defaultFallbacks];
+        results[group] = 0;
         return;
       }
 
@@ -497,7 +503,7 @@ export function DashboardModule({
   // Learning metrics
   const learningTelemetry = useMemo(() => {
     const studyHours = sessions.reduce((sum, s) => sum + (s.hours || 0) + (s.minutes || 0) / 60, 0);
-    const hours = studyHours > 0 ? Math.round(studyHours * 10) / 10 : 4.5;
+    const hours = studyHours > 0 ? Math.round(studyHours * 10) / 10 : 0;
     const target = 10;
 
     // Nearest active exam
@@ -523,9 +529,7 @@ export function DashboardModule({
 
   // --- OTHERS DATA ENGINE ---
   const foodTelemetry = useMemo(() => {
-    const plateList = foodPlate.length > 0 ? foodPlate : [
-      { calories: 350, protein: 25, fiber: 6, quantity: 1, checked: true }
-    ];
+    const plateList = foodPlate;
     let calories = 0;
     let protein = 0;
     let fiber = 0;
@@ -556,10 +560,10 @@ export function DashboardModule({
     const today = new Date();
     const year = today.getFullYear();
     const month = today.getMonth(); // 0-indexed
-    
+
     // Get total number of days in the current month
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const dates = [];
     for (let day = 1; day <= daysInMonth; day++) {
       const dayStr = String(day).padStart(2, "0");
@@ -571,12 +575,7 @@ export function DashboardModule({
       });
     }
 
-    const txList = transactions.length > 0 ? transactions : [
-      { id: "1", type: "income", amount: 400, date: `${year}-${String(month + 1).padStart(2, "0")}-05` },
-      { id: "2", type: "expense", amount: 120, date: `${year}-${String(month + 1).padStart(2, "0")}-10` },
-      { id: "3", type: "income", amount: 250, date: `${year}-${String(month + 1).padStart(2, "0")}-15` },
-      { id: "4", type: "expense", amount: 90, date: `${year}-${String(month + 1).padStart(2, "0")}-20` }
-    ] as Transaction[];
+    const txList = transactions;
 
     return dates.map(({ dateStr, dayNum }) => {
       const dayTxs = txList.filter(t => t.date === dateStr);
@@ -625,15 +624,26 @@ export function DashboardModule({
     const updatedTasks = tasks.map(t => {
       if (t.id === taskId) {
         const nextCompleted = !t.completed;
-        if (nextCompleted) {
-          awardPoints(50, "Tasks");
-        }
+        const getPriorityPoints = (priority: PriorityLevel): number => {
+          switch (priority) {
+            case "low":
+              return 10;
+            case "medium":
+              return 15;
+            case "high":
+              return 20;
+            default:
+              return 0;
+          }
+        };
+        const points = getPriorityPoints(t.priority);
+        awardPoints(nextCompleted ? points : -points, "Tasks");
         return { ...t, completed: nextCompleted };
       }
       return t;
     });
     setTasks(updatedTasks);
-    localStorage.setItem("nect_tasks", JSON.stringify(updatedTasks));
+    localStorage.setItem(getTasksKey(), JSON.stringify(updatedTasks));
   };
 
   return (
@@ -1180,9 +1190,9 @@ export function DashboardModule({
                                 ? "bg-rose-950/50 border-rose-900 text-rose-350"
                                 : task.priority === "medium"
                                   ? "bg-amber-950/50 border-amber-900 text-amber-350"
-                                  : "bg-slate-900 border-slate-800 text-slate-400"
+                                  : "bg-emerald-950/50 border-emerald-900 text-emerald-350"
                                 }`}>
-                                {task.priority}
+                                {task.priority} (+{task.priority === "high" ? 20 : task.priority === "medium" ? 15 : 10} XP)
                               </span>
                             </div>
                           </div>
