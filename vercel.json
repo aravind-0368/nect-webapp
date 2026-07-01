@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm install --legacy-peer-deps && prisma generate && next build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "framework": "nextjs"
+}
