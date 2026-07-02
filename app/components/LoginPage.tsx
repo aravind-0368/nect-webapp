@@ -7,7 +7,6 @@ import { createClient } from "../../utils/supabase/client";
 import {
   BookOpen,
   Key,
-  Target,
   Dumbbell,
   Coins,
   GraduationCap,
@@ -173,6 +172,10 @@ function renderFormattedText(text: string): React.ReactNode[] {
   });
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const supabase = createClient();
   const { points, rankOverride, setUserId, setPoints, setPowerStreak, setSmartStreak, setHealthyStreak } = useNectStore();
@@ -189,12 +192,12 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [signupUsername, setSignupUsername] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
   const [authError, setAuthError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [activeDocKey, setActiveDocKey] = useState<keyof typeof DOCUMENTS>("overview");
 
@@ -248,7 +251,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const loginClient = createClient({ rememberSession: rememberMe });
+      const { data, error } = await loginClient.auth.signInWithPassword({
         email: loginEmail,
         password: loginPassword,
       });
@@ -261,7 +265,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
       if (data.user) {
         // Fetch public User profile
-        const { data: profile } = await supabase
+        const { data: profile } = await loginClient
           .from("User")
           .select("*")
           .eq("id", data.user.id)
@@ -274,7 +278,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
           setHealthyStreak(profile.foodStreak);
         } else {
           // If no profile (edge case), initialize one
-          await supabase.from("User").insert({
+          await loginClient.from("User").insert({
             id: data.user.id,
             email: data.user.email || "",
             username: data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User",
@@ -286,8 +290,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
         setUserId(data.user.id);
         onAuthenticated();
       }
-    } catch (err: any) {
-      setAuthError(err.message || "An unexpected error occurred during initialization.");
+    } catch (err) {
+      setAuthError(getErrorMessage(err, "An unexpected error occurred during initialization."));
     } finally {
       setIsLoading(false);
     }
@@ -348,8 +352,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
           setAuthError("Account created! Please check your email to verify your connection.");
         }
       }
-    } catch (err: any) {
-      setAuthError(err.message || "An unexpected error occurred during telemetry configuration.");
+    } catch (err) {
+      setAuthError(getErrorMessage(err, "An unexpected error occurred during telemetry configuration."));
     } finally {
       setIsLoading(false);
     }
@@ -368,8 +372,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       } else {
         setAuthError("Recovery token dispatched. Check your email!");
       }
-    } catch (err: any) {
-      setAuthError(err.message || "Could not dispatch recovery token.");
+    } catch (err) {
+      setAuthError(getErrorMessage(err, "Could not dispatch recovery token."));
     } finally {
       setIsLoading(false);
     }
@@ -529,6 +533,15 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                         value={loginPassword}
                         onChange={(val) => { setLoginPassword(val); setAuthError(""); }}
                       />
+                      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#5B009C]/20 bg-[#020212]/70 px-4 py-3 text-xs font-mono text-slate-400 transition-colors hover:border-[#5B009C]/35 hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={rememberMe}
+                          onChange={(event) => setRememberMe(event.target.checked)}
+                          className="h-4 w-4 rounded border-[#5B009C]/40 bg-[#020212] text-[#5B009C] accent-[#5B009C]"
+                        />
+                        <span>Remember me and keep this device logged in</span>
+                      </label>
                       <div className="flex justify-between items-center">
                         <button
                           type="button"
